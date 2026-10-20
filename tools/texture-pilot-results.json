@@ -1,0 +1,9 @@
+{
+  "scope": "First room only: tatami borders, shoji inner lattice, tansu hardware and shared surface finishes",
+  "environment": "Desktop in-app browser; not a physical smartphone measurement",
+  "conditions": { "width": 866, "height": 470, "pixelRatio": 1, "warmupFrames": 12, "sampleFrames": 48, "cameraYaw": [0.28, 0.68], "cameraPitch": 0.37, "drawerOpen": true, "keyCollected": true, "doorOpen": false },
+  "geometry": { "triangles": 34572, "drawCalls": 107, "textures": 15, "estimatedTextureBytesWithMipmaps": 11796480, "cpuSubmissionMedianMs": 1.7000000476837158, "cpuSubmissionP95Ms": 2.5 },
+  "images": { "triangles": 19908, "drawCalls": 89, "textures": 11, "estimatedTextureBytesWithMipmaps": 10398379, "cpuSubmissionMedianMs": 1.2000000476837158, "cpuSubmissionP95Ms": 2.0999999046325684, "surfaceImageTransferBytes": 16314, "atlasSize": [1024, 1024], "maximumTileDimension": 500 },
+  "limitations": ["CPU submission timing is not GPU time or FPS", "One comparative run; timing depends on browser and machine load", "WebP compresses transfer size; GPU memory is estimated as decoded RGBA plus mipmaps"],
+  "regressionChecks": ["Scroll clue and inventory", "Incorrect and correct code handling", "Surface mode change preserves camera and inventory", "Surface mode change preserves an open drawer and an uncollected key", "Collected key survives comparison and page reload", "Key use opens the 3D door and reaches the escape ending", "No console errors or warnings observed"]
+}

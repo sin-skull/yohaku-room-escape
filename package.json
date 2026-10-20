@@ -1,0 +1,10 @@
+{
+  "name": "yohaku-room-escape",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A quiet Japanese room escape, built with Three.js.",
+  "scripts": {
+    "start": "node server.cjs",
+    "check": "node --check app.js && node --check room.js && node --check server.cjs"
+  }
+}

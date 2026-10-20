@@ -1,0 +1,106 @@
+{
+  "textures": [
+    {
+      "name": "wood",
+      "file": "./assets/textures/wood.webp",
+      "width": 512,
+      "height": 512,
+      "bytes": 2516
+    },
+    {
+      "name": "light-wood",
+      "file": "./assets/textures/light-wood.webp",
+      "width": 256,
+      "height": 256,
+      "bytes": 1078
+    },
+    {
+      "name": "tatami",
+      "file": "./assets/textures/tatami.webp",
+      "width": 512,
+      "height": 512,
+      "bytes": 4796
+    },
+    {
+      "name": "plaster",
+      "file": "./assets/textures/plaster.webp",
+      "width": 256,
+      "height": 256,
+      "bytes": 240
+    },
+    {
+      "name": "washi",
+      "file": "./assets/textures/washi.webp",
+      "width": 256,
+      "height": 512,
+      "bytes": 322
+    },
+    {
+      "name": "shoji",
+      "file": "./assets/textures/shoji.webp",
+      "width": 256,
+      "height": 512,
+      "bytes": 4336
+    },
+    {
+      "name": "drawer-front",
+      "file": "./assets/textures/drawer-front.webp",
+      "width": 512,
+      "height": 128,
+      "bytes": 3454
+    }
+  ],
+  "sourceTotalBytes": 16742,
+  "totalBytes": 16314,
+  "atlas": {
+    "file": "./assets/textures/surface-atlas.webp",
+    "width": 1024,
+    "height": 1024,
+    "bytes": 16314,
+    "padding": 6,
+    "tiles": {
+      "wood": {
+        "x": 6,
+        "y": 6,
+        "width": 244,
+        "height": 500
+      },
+      "light-wood": {
+        "x": 262,
+        "y": 6,
+        "width": 244,
+        "height": 244
+      },
+      "plaster": {
+        "x": 262,
+        "y": 262,
+        "width": 244,
+        "height": 244
+      },
+      "tatami": {
+        "x": 518,
+        "y": 6,
+        "width": 500,
+        "height": 500
+      },
+      "shoji": {
+        "x": 6,
+        "y": 518,
+        "width": 244,
+        "height": 500
+      },
+      "washi": {
+        "x": 262,
+        "y": 518,
+        "width": 244,
+        "height": 500
+      },
+      "drawer-front": {
+        "x": 518,
+        "y": 518,
+        "width": 500,
+        "height": 116
+      }
+    }
+  }
+}
