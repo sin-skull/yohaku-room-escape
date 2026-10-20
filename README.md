@@ -2,6 +2,12 @@
 
 Three.jsで作った、小さな和室の脱出ゲームです。
 
+現在の公開版：**v1.1.0** / [遊ぶ](https://sin-skull.github.io/yohaku-room-escape/) / [拡大できる制作図](https://sin-skull.github.io/yohaku-room-escape/project.html)
+
+[制作の指針・ES図・ロードマップ](docs/README.md) / [30段階の分岐設計案（未実装）](docs/PUZZLE-30.md) / [変更履歴](CHANGELOG.md)
+
+部屋はピンチ・ホイール・＋−で拡大縮小できます。「正面」で正面へ、「戻」で全景へ戻ります。掛け軸の図もタップ・ピンチで拡大でき、数字錠はタップ・上下・スワイプで循環します。ヒントは専用ボタンから開けます。
+
 - ドラッグ・左右ボタンで3Dの部屋を見回し、クリック・タップで調査できます。
 - 掛け軸の手がかりを読み、箪笥を開け、鍵を手に入れて脱出します。
 - 進行状況はブラウザに自動保存されます。
@@ -21,4 +27,4 @@ Node.jsをインストールした環境で `npm start` を実行し、表示さ
 
 素材の生成元は `tools/build-textures.py`（Python / Pillow）、描画負荷の試験記録は `tools/texture-pilot-results.json` です。実機FPSの保証値ではありません。
 
-Three.jsのライセンスは `vendor/LICENSE.three.txt` を参照してください。本文表示にはGoogle Fontsを利用し、取得できない場合はシステムフォントを使用します。環境音は操作に応じてブラウザ内で生成します。
+Three.jsのライセンスは `vendor/LICENSE.three.txt` を参照してください。本文表示はシステムの明朝体を使います。環境音は操作に応じてブラウザ内で生成します。

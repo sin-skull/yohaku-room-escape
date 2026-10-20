@@ -1,15 +1,5 @@
 <!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f5f4ee">
-  <meta name="description" content="光と静けさに包まれた一部屋。掛け軸に隠された謎を解く、小さな和室の脱出ゲーム。">
-  <title>余白 — YOHAKU | 和室の脱出ゲーム</title>
-  <link rel="icon" href="./mark.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="./style.css">
-</head>
-<body>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"><meta name="theme-color" content="#303b30"><meta name="description" content="墨絵を読み、錠を回す。光と静けさの和室脱出ゲーム。"><title>余白 — YOHAKU</title><link rel="icon" href="./mark.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"></head><body>
   <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg"><defs>
     <symbol id="i-sound" viewBox="0 0 24 24"><path d="m11 5-6 5H2v4h3l6 5zM16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
     <symbol id="i-mute" viewBox="0 0 24 24"><path d="m11 5-6 5H2v4h3l6 5zM17 9l5 6m0-6-5 6"/></symbol>
@@ -25,41 +15,19 @@
     <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 12V5a2 2 0 0 1 4 0v6-2a2 2 0 0 1 4 0v3-1a2 2 0 0 1 4 0v6c0 4-2 6-6 6-3 0-4-1-6-4l-3-4a2 2 0 0 1 3-3Z"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 3h14v18H5zM9 8h6m-6 4h6m-6 4h4"/></symbol>
   </defs></svg>
-  <header class="site-header">
-    <a class="brand" href="./" aria-label="余白 ホーム"><span class="brand-seal">余<span>白</span></span><span class="brand-word">YOHAKU<small>小さな、和の脱出ゲーム</small></span></a>
-    <nav class="header-actions" aria-label="ゲームメニュー">
-      <button id="help-button" class="text-button" aria-label="遊び方"><svg><use href="#i-help"/></svg><span>遊び方</span></button>
-      <button id="sound-button" class="text-button" aria-label="環境音をオンにする" aria-pressed="false"><svg><use href="#i-mute"/></svg><span>音 OFF</span></button>
-      <span class="nav-divider"></span><button id="settings-button" class="icon-button" aria-label="設定"><svg><use href="#i-settings"/></svg></button>
-    </nav>
-  </header>
-  <main class="main-wrap">
-    <section class="intro" aria-labelledby="game-title"><div><p class="eyebrow">JAPANESE ROOM ESCAPE</p><h1 id="game-title">静けさの中に、<span>出口はある。</span></h1></div><div class="intro-caption"><span class="leaf">✳</span><p>ひと息ついて、ひとつずつ。<br>あなただけのペースで、謎をほどく。</p></div></section>
-    <div class="game-layout">
-      <section class="game-panel" aria-label="和室の探索">
-        <div class="room-viewport" id="room-viewport">
-          <div id="scene" role="img" aria-label="障子から光が差す、畳と掛け軸と箪笥のある3Dの和室"></div><div class="scene-grain"></div>
-          <div class="room-heading"><span class="chapter-tag">第一章</span><span>静寂の間</span><span class="room-heading-line"></span></div><div class="live-badge"><span></span>探索中</div>
-          <div class="hotspots" id="hotspots"></div>
-          <div class="view-tools"><button class="scene-tool" id="reset-view" aria-label="視点を戻す" title="視点を戻す"><svg><use href="#i-reset"/></svg></button><button class="scene-tool" id="expand-view" aria-label="画面を広げる" title="画面を広げる"><svg><use href="#i-expand"/></svg></button></div>
-          <div id="loading" class="loading"><span class="loading-mark">余白</span><p>静けさを、しつらえています。</p></div>
-          <div class="scene-caption"><span class="small-spark">✧</span><p id="scene-message">気になるものを、そっと調べてみましょう。</p></div>
-          <div class="view-indicator"><span id="view-angle">正面</span><div><i></i><i class="active"></i><i></i></div></div>
-        </div>
-        <div class="view-bar"><div class="view-instruction"><svg><use href="#i-hand"/></svg><span>ドラッグで見回す<span class="instruction-separator">/</span>クリックで調べる</span></div><div class="view-switch"><button id="view-left" aria-label="左を見回す"><svg class="flip"><use href="#i-arrow"/></svg></button><span>見回す</span><button id="view-right" aria-label="右を見回す"><svg><use href="#i-arrow"/></svg></button></div></div>
-      </section>
-      <aside class="journal" aria-label="探索の記録">
-        <div class="journal-heading"><span>探索の記録</span><span class="small-label">YOUR JOURNEY</span></div>
-        <div class="objective"><span class="tiny-diamond">◇</span><div><span class="small-label">この部屋の目的</span><h2>隠された鍵を見つける</h2><p>部屋に散らばる手がかりが、<br>出口へとつながっています。</p></div></div>
-        <div class="progress-track" aria-label="進行状況"><div id="step-clue" class="journey-step current"><span class="step-number">01</span><div><strong>手がかりを探す</strong><small>目に映るものを、よく見て。</small></div><span class="step-status"></span></div><div id="step-chest" class="journey-step"><span class="step-number">02</span><div><strong>仕掛けを解く</strong><small>気づきを、つなぎ合わせる。</small></div><span class="step-status"></span></div><div id="step-escape" class="journey-step"><span class="step-number">03</span><div><strong>この部屋を出る</strong><small>その先には、何があるだろう。</small></div><span class="step-status"></span></div></div>
-        <div class="inventory-section"><div class="section-label"><span>持ちもの</span><span id="inventory-count">0 / 4</span></div><div class="inventory" id="inventory"><button class="inventory-slot" disabled aria-label="空の持ちもの枠 1"><span>＋</span></button><button class="inventory-slot" disabled aria-label="空の持ちもの枠 2"><span>＋</span></button><button class="inventory-slot" disabled aria-label="空の持ちもの枠 3"><span>＋</span></button><button class="inventory-slot" disabled aria-label="空の持ちもの枠 4"><span>＋</span></button></div><p id="inventory-caption">見つけたものは、ここに。</p></div>
-        <button class="hint-button" id="hint-button"><svg><use href="#i-bulb"/></svg><span>少しだけ、ヒントを</span><svg class="hint-arrow"><use href="#i-arrow"/></svg></button><p class="save-note"><span></span>進行状況は自動で保存されます</p>
-      </aside>
-    </div>
-    <footer class="game-footer"><div><span class="footer-mark">余白</span><span>忙しない日々に、小さな余白を。</span></div><span class="footer-right">ひらめきと、静けさを楽しむ時間。<span>© YOHAKU</span></span></footer>
-  </main>
-  <dialog id="modal" class="modal" aria-labelledby="modal-title"><div class="modal-inner"><button class="modal-close icon-button" aria-label="閉じる"><svg><use href="#i-close"/></svg></button><div id="modal-content"></div></div></dialog>
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js"></script>
-</body>
-</html>
+
+<main class="game-panel" aria-label="和室の脱出ゲーム">
+ <div id="room-viewport" class="room-viewport">
+  <div id="scene" role="img" aria-label="自由に見回せる、畳と掛け軸と箪笥のある三次元の和室"></div><div class="scene-grain"></div>
+  <div id="hotspots" class="hotspots"></div>
+  <div id="loading" class="loading"><span class="loading-mark">余白</span><p>しつらえ中</p></div>
+ </div>
+ <header class="site-header"><div class="brand"><h1>余白</h1><span class="live-badge">静寂の間</span><span id="game-version" class="game-version" aria-label="ゲームのバージョン">v1.1.0</span></div><nav class="header-actions" aria-label="メニュー"><button id="help-button" class="ink-button" aria-label="遊び方">手引</button><button id="sound-button" class="ink-button" aria-label="環境音をオンにする" aria-pressed="false"><svg><use href="#i-mute"/></svg><span>音</span></button><button id="settings-button" class="ink-button" aria-label="設定">設定</button></nav></header>
+ <div class="view-tools" aria-label="視点操作"><button id="front-view" aria-label="部屋を正面から見る">正面</button><button id="zoom-in" aria-label="部屋を拡大">＋</button><button id="zoom-out" aria-label="部屋を縮小">−</button><button id="reset-view" aria-label="部屋全体の視点に戻す">戻</button></div>
+ <div class="view-switch"><button id="view-left" aria-label="左を見回す">‹</button><button id="view-right" aria-label="右を見回す">›</button></div>
+ <div class="view-indicator" aria-hidden="true"><span id="view-angle">正面</span><i></i><i class="active"></i><i></i></div>
+ <footer class="game-hud"><div class="inventory-wrap"><span class="inventory-label">持ちもの</span><div id="inventory" class="inventory"></div></div><button id="hint-button" class="hint-button">ヒント</button></footer>
+ <p class="save-note" role="status"></p><p id="scene-message" class="scene-message" role="status"></p>
+</main>
+<dialog id="modal" class="modal" aria-labelledby="modal-title"><div class="modal-inner"><button class="modal-close" aria-label="閉じる">戻</button><div id="modal-content"></div></div></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div><script type="module" src="./app.js"></script></body></html>

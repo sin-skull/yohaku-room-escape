@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.min.js';
 import { textureAtlas } from './assets/textures/atlas-layout.js';
+import { createGesture, clampZoom } from './interaction.js';
 
 export function createRoom(container, { onInspect, solved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', view = null }) {
   const imageSurfaces = surfaceMode === 'images';
@@ -15,7 +16,9 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   container.appendChild(renderer.domElement);
   const camera = new THREE.PerspectiveCamera(39, 1, .1, 70);
   const target = new THREE.Vector3(0, 1.15, -.4);
-  let yaw = .48, wantedYaw = .48, pitch = .37, wantedPitch = .37, distance = 10.8;
+  const wantedTarget = target.clone();
+  let zoom = 1, wantedZoom = 1, doorResolve = null;
+  let yaw = 0, wantedYaw = 0, pitch = .12, wantedPitch = .12, distance = 10.8;
   let frame = 0, drawerOpen = solved ? .65 : 0, doorOpen = escaped ? 1 : 0, drawerTarget = drawerOpen, doorTarget = doorOpen;
   let seed = 529;
   const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -129,7 +132,9 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   box(1.02,1.97,.025,-2.55,1.74,-2.937,material('#b1ac8a'),scroll);
   const calligraphy = texture((c,s)=>{
     c.fillStyle='#ece6cf';c.fillRect(0,0,s,s);c.fillStyle='#313b29';c.textAlign='center';c.font='105px "Yu Mincho", "Noto Serif JP", serif';
-    c.fillText('松',s*.5,145);c.fillText('竹',s*.5,275);c.fillText('梅',s*.5,405);
+    c.font='38px serif';c.lineWidth=2.5;c.strokeStyle='#383d30';
+    const paths=['M22 41V19M10 21l12-14 12 14M5 31l17-17 17 17M4 40l18-17 18 17','M22 43V5M17 14h10M17 27h10M22 21Q8 7 5 16q7 11 17 5M22 32q14-17 17-9-3 11-17 9','M22 18c-10-17-24 1-11 9-10 15 11 23 13 8 17 8 23-15 8-16 2-15-19-18-10-1Z'];
+    ['松','竹','梅'].forEach((label,i)=>{const x=145+i*110;c.fillText(label,x,90);for(let j=0;j<[3,1,5][i];j++){c.save();c.translate(x-23,110+j*57);c.stroke(new Path2D(paths[i]));if(i===2){c.beginPath();c.arc(23,26,3,0,Math.PI*2);c.stroke();}c.restore();}});
     c.fillStyle='#a35d454f';c.fillRect(380,411,38,38);c.fillStyle='#8b4934';c.font='23px serif';c.fillText('和',399,438);
   });
   box(.74,1.5,.012,-2.55,1.78,-2.917,material('#f4f0db',{map:calligraphy}),scroll);
@@ -318,37 +323,47 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   const hotContainer=document.querySelector('#hotspots');
   hotContainer.replaceChildren();
   const hotspots=hotspotSpecs.map(([id,label,pos])=>{
-    const button=document.createElement('button');button.className='hotspot';button.setAttribute('aria-label',label);button.innerHTML=`<span class="hotspot-label">${label.replace('を調べる','')}</span>`;button.addEventListener('click',()=>onInspect(id));hotContainer.appendChild(button);
+    const button=document.createElement('button');button.className='hotspot';button.dataset.inspect=id;button.setAttribute('aria-label',label);button.innerHTML=`<span class="hotspot-label">${label.replace('を調べる','')}</span>`;button.addEventListener('click',e=>{if(e.detail===0)onInspect(id);});hotContainer.appendChild(button);
     return {button,position:new THREE.Vector3(...pos)};
   });
   hotContainer.hidden=!markers;
   const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
-  let drag=null;
-  renderer.domElement.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,ox:e.clientX,oy:e.clientY,moved:false};renderer.domElement.setPointerCapture(e.pointerId);});
-  renderer.domElement.addEventListener('pointermove',e=>{
-    if(!drag)return;
-    const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
-    if(Math.hypot(e.clientX-drag.ox,e.clientY-drag.oy)>6)drag.moved=true;
-    if(drag.moved){wantedYaw=THREE.MathUtils.clamp(wantedYaw-dx*.004,-.22,.82);wantedPitch=THREE.MathUtils.clamp(wantedPitch+dy*.002,.19,.58);updateIndicator();requestRender();}
-    drag.x=e.clientX;drag.y=e.clientY;
-  });
-  renderer.domElement.addEventListener('pointerup',e=>{
-    if(!drag)return;
-    if(!drag.moved){const r=container.getBoundingClientRect();pointer.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);const hits=raycaster.intersectObjects(pickables,true);if(hits.length){let obj=hits[0].object;while(obj&&!obj.userData.inspect)obj=obj.parent;if(obj)onInspect(obj.userData.inspect);}}
-    drag=null;
-  });
-  renderer.domElement.addEventListener('pointercancel',()=>{drag=null;});
+  const gesture=createGesture(),surface=container.parentElement;
+  const controls=new AbortController(),listen={signal:controls.signal};
+  surface.addEventListener('pointerdown',e=>{
+    if(e.button!==0||(!e.target.closest('#scene')&&!e.target.closest('.hotspot')))return;
+    gesture.down(e.pointerId,e.clientX,e.clientY,e.target.closest('[data-inspect]')?.dataset.inspect);
+    surface.setPointerCapture(e.pointerId);e.preventDefault();
+  },listen);
+  surface.addEventListener('pointermove',e=>{
+    const action=gesture.move(e.pointerId,e.clientX,e.clientY);if(!action)return;
+    if(action.zoom)wantedZoom=clampZoom(wantedZoom*action.zoom);
+    else {wantedYaw=THREE.MathUtils.clamp(wantedYaw-action.dx*.004,-1.1,1.1);wantedPitch=THREE.MathUtils.clamp(wantedPitch+action.dy*.002,.06,.8);}
+    updateIndicator();requestRender();
+  },listen);
+  surface.addEventListener('pointerup',e=>{
+    const tap=gesture.up(e.pointerId);if(!tap)return;
+    if(tap.hit){onInspect(tap.hit);return;}
+    const r=container.getBoundingClientRect();pointer.set((tap.x-r.left)/r.width*2-1,-(tap.y-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);
+    const hits=raycaster.intersectObjects(pickables,true).filter(hit=>{let object=hit.object;while(object){if(!object.visible)return false;object=object.parent;}return true;});
+    if(hits.length){let obj=hits[0].object;while(obj&&!obj.userData.inspect)obj=obj.parent;if(obj)onInspect(obj.userData.inspect);}
+  },listen);
+  surface.addEventListener('pointercancel',()=>gesture.cancel(),listen);
+  surface.addEventListener('lostpointercapture',e=>{gesture.up(e.pointerId);},listen);
+  surface.addEventListener('wheel',e=>{e.preventDefault();wantedZoom=clampZoom(wantedZoom*Math.exp(Math.max(-100,Math.min(100,e.deltaY))*.002));requestRender();},{...listen,passive:false});
 
   function render(){
     frame=0;
     yaw=THREE.MathUtils.lerp(yaw,wantedYaw,.13);pitch=THREE.MathUtils.lerp(pitch,wantedPitch,.13);
+    target.lerp(wantedTarget,.13);zoom=THREE.MathUtils.lerp(zoom,wantedZoom,.13);
     drawerOpen=THREE.MathUtils.lerp(drawerOpen,drawerTarget,.09);doorOpen=THREE.MathUtils.lerp(doorOpen,doorTarget,.045);
     drawer.position.z=drawerOpen;door.position.x=-doorOpen*1.23;exitGlow.visible=doorOpen>.01;
-    camera.position.set(Math.sin(yaw)*distance,Math.sin(pitch)*distance+target.y,Math.cos(yaw)*Math.cos(pitch)*distance);camera.lookAt(target);camera.updateMatrixWorld();
+    camera.position.set(target.x+Math.sin(yaw)*distance*zoom,Math.sin(pitch)*distance*zoom+target.y,target.z+Math.cos(yaw)*Math.cos(pitch)*distance*zoom);camera.lookAt(target);camera.updateMatrixWorld();
     const beforeRender=performance.now();renderer.render(scene,camera);lastRenderMs=performance.now()-beforeRender;
     const w=container.clientWidth,h=container.clientHeight;
     for(const item of hotspots){const p=item.position.clone().project(camera);item.button.style.left=`${(p.x*.5+.5)*w}px`;item.button.style.top=`${(-p.y*.5+.5)*h}px`;item.button.style.visibility=p.z<1&&p.x>-.95&&p.x<.95&&p.y>-.85&&p.y<.75?'visible':'hidden';}
-    if(Math.abs(yaw-wantedYaw)>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001)requestRender();
+    if(doorResolve&&doorOpen>.98){const resolve=doorResolve;doorResolve=null;resolve(true);}
+    if(Math.abs(yaw-wantedYaw)>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||target.distanceTo(wantedTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001)requestRender();
   }
   function requestRender(){if(!disposed&&!frame)frame=requestAnimationFrame(render);}
   function resize(){const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;
@@ -356,7 +371,7 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     distance=w/h<1?15.3:10.8*Math.max(1,1.6/(w/h));
     camera.updateProjectionMatrix();requestRender();}
   const observer=new ResizeObserver(resize);observer.observe(container);resize();
-  if (view) { yaw=wantedYaw=view.yaw; pitch=wantedPitch=view.pitch; updateIndicator(); }
+  if (view) { yaw=wantedYaw=view.yaw; pitch=wantedPitch=view.pitch;zoom=wantedZoom=view.zoom??1;if(view.target){target.fromArray(view.target);wantedTarget.copy(target);}updateIndicator(); }
   const ready=Promise.all(assetLoads).then(()=>{
     if(disposed)return;
     requestRender();document.querySelector('#loading').classList.add('hidden');document.querySelector('#loading').setAttribute('aria-hidden','true');
@@ -365,15 +380,18 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();if(!disposed)document.querySelector('#scene-message').textContent='描画が中断されました。ページを再読み込みしてください。';});
   return {
     ready,
-    look(direction){wantedYaw=THREE.MathUtils.clamp(wantedYaw+direction*.25,-.22,.82);updateIndicator();requestRender();},
-    resetView(){wantedYaw=.48;wantedPitch=.37;updateIndicator();requestRender();},
+    look(direction){wantedYaw=THREE.MathUtils.clamp(wantedYaw+direction*.25,-1.1,1.1);updateIndicator();requestRender();},
+    zoomBy(factor){wantedZoom=clampZoom(wantedZoom*factor);requestRender();},
+    frontView(){wantedYaw=0;wantedPitch=0;wantedTarget.set(0,1.5,-.4);wantedZoom=1;updateIndicator();requestRender();},
+    focus(id){const points={scroll:[-2.55,1.85,-2.7],chest:[.46,.95,-2],door:[3,1.5,-2.7],tea:[-.4,.85,.7],lantern:[-3.55,.6,-.85],window:[-3.9,1.6,0],'pickup-key':[.46,1.05,-1.7]};if(!points[id])return;wantedTarget.fromArray(points[id]);wantedYaw=id==='window'?.7:0;wantedPitch=['chest','pickup-key'].includes(id)?.3:id==='tea'?.48:.12;wantedZoom=.42;updateIndicator();requestRender();},
+    resetView(){wantedYaw=.48;wantedPitch=.37;wantedZoom=1;wantedTarget.set(0,1.15,-.4);updateIndicator();requestRender();},
     openDrawer(){drawerTarget=.65;requestRender();},
-    openDoor(){doorTarget=1;requestRender();},
+    openDoor(){doorTarget=1;requestRender();return new Promise(resolve=>{if(doorOpen>.98)resolve(true);else doorResolve=resolve;});},
     takeKey(){keyItem.visible=false;requestRender();},
-    restart(){drawerTarget=0;doorTarget=0;keyItem.visible=true;this.resetView();},
+    restart(){doorResolve?.(false);doorResolve=null;drawerTarget=0;doorTarget=0;keyItem.visible=true;this.resetView();},
     setMarkers(value){hotContainer.hidden=!value;},
     setQuality(value){renderer.setPixelRatio(Math.min(devicePixelRatio||1,value));resize();},
-    getView(){return {yaw:wantedYaw,pitch:wantedPitch};},
+    getView(){return {yaw:wantedYaw,pitch:wantedPitch,zoom:wantedZoom,target:wantedTarget.toArray()};},
     getInfo(){
       const maps=new Set();scene.traverse(obj=>{for(const mat of [obj.material].flat()){if(mat?.map)maps.add(mat.map);}});
       let textureBytes=0;for(const map of maps){const image=map.image;if(image)textureBytes+=image.width*image.height*4*(map.generateMipmaps?4/3:1);}
@@ -382,21 +400,21 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     async measure(){
       await ready;
       if(disposed)throw new Error('Room was disposed during comparison');
-      const previous={yaw:wantedYaw,pitch:wantedPitch};
+      const previous=this.getView();
       cancelAnimationFrame(frame);frame=0;drawerOpen=drawerTarget;doorOpen=doorTarget;
       const samples=[];
       for(let i=0;i<60;i++)await new Promise(resolve=>requestAnimationFrame(()=>{
         if(disposed){resolve();return;}
-        yaw=wantedYaw=.28+i/59*.4;pitch=wantedPitch=.37;render();
+        yaw=wantedYaw=.28+i/59*.4;pitch=wantedPitch=.37;target.set(0,1.15,-.4);wantedTarget.copy(target);zoom=wantedZoom=1;render();
         if(i>=12)samples.push(lastRenderMs);resolve();
       }));
       if(disposed)throw new Error('Room was disposed during comparison');
       samples.sort((a,b)=>a-b);
       const result={...this.getInfo(),cpuMedianMs:samples[Math.floor(samples.length/2)],cpuP95Ms:samples[Math.floor(samples.length*.95)],samples:samples.length};
-      wantedYaw=previous.yaw;wantedPitch=previous.pitch;updateIndicator();requestRender();return result;
+      wantedYaw=previous.yaw;wantedPitch=previous.pitch;wantedZoom=previous.zoom;wantedTarget.fromArray(previous.target);updateIndicator();requestRender();return result;
     },
     dispose(){
-      disposed=true;cancelAnimationFrame(frame);observer.disconnect();
+      disposed=true;doorResolve?.(false);controls.abort();cancelAnimationFrame(frame);observer.disconnect();
       const geometries=new Set(),materials=new Set(),maps=new Set(textureCache.values());
       scene.traverse(obj=>{if(obj.geometry)geometries.add(obj.geometry);for(const mat of [obj.material].flat()){if(mat){materials.add(mat);if(mat.map)maps.add(mat.map);}}});
       geometries.forEach(geometry=>geometry.dispose());materials.forEach(mat=>mat.dispose());maps.forEach(map=>map.dispose());

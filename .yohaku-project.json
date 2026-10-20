@@ -1,5 +1,6 @@
 {
   "project": "yohaku-room-escape",
   "version": 1,
-  "entry": "index.html"
+  "entry": "index.html",
+  "releaseVersion": "1.1.0"
 }
