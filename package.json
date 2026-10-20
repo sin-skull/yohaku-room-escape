@@ -1,12 +1,12 @@
 {
   "name": "yohaku-room-escape",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "A quiet Japanese room escape, built with Three.js.",
   "scripts": {
     "start": "node server.cjs",
-    "check": "node --check app.js && node --check room.js && node --check interaction.js && node --check server.cjs",
-    "test": "node --test tests/interaction.test.js"
+    "check": "node --check app.js && node --check room.js && node --check interaction.js && node --check navigation.js && node --check inventory.js && node --check server.cjs",
+    "test": "node --test tests/*.test.js"
   }
 }

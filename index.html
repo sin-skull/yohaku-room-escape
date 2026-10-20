@@ -14,6 +14,7 @@
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
     <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 12V5a2 2 0 0 1 4 0v6-2a2 2 0 0 1 4 0v3-1a2 2 0 0 1 4 0v6c0 4-2 6-6 6-3 0-4-1-6-4l-3-4a2 2 0 0 1 3-3Z"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 3h14v18H5zM9 8h6m-6 4h6m-6 4h4"/></symbol>
+    <symbol id="i-walk" viewBox="0 0 24 24"><ellipse cx="7" cy="9" rx="3" ry="5" transform="rotate(-20 7 9)"/><path d="M6 16c-2 0-2 4 1 4 3 0 3-4-1-4Z"/><ellipse cx="17" cy="15" rx="3" ry="5" transform="rotate(20 17 15)"/><path d="M18 4c2 0 2 4-1 4-3 0-3-4 1-4Z"/></symbol>
   </defs></svg>
 
 <main class="game-panel" aria-label="和室の脱出ゲーム">
@@ -22,11 +23,13 @@
   <div id="hotspots" class="hotspots"></div>
   <div id="loading" class="loading"><span class="loading-mark">余白</span><p>しつらえ中</p></div>
  </div>
- <header class="site-header"><div class="brand"><h1>余白</h1><span class="live-badge">静寂の間</span><span id="game-version" class="game-version" aria-label="ゲームのバージョン">v1.1.0</span></div><nav class="header-actions" aria-label="メニュー"><button id="help-button" class="ink-button" aria-label="遊び方">手引</button><button id="sound-button" class="ink-button" aria-label="環境音をオンにする" aria-pressed="false"><svg><use href="#i-mute"/></svg><span>音</span></button><button id="settings-button" class="ink-button" aria-label="設定">設定</button></nav></header>
- <div class="view-tools" aria-label="視点操作"><button id="front-view" aria-label="部屋を正面から見る">正面</button><button id="zoom-in" aria-label="部屋を拡大">＋</button><button id="zoom-out" aria-label="部屋を縮小">−</button><button id="reset-view" aria-label="部屋全体の視点に戻す">戻</button></div>
+ <header class="site-header"><div class="brand"><h1>余白</h1><span class="live-badge">静寂の間</span><span id="game-version" class="game-version" aria-label="ゲームのバージョン">v1.2.0</span></div><nav class="header-actions" aria-label="メニュー"><button id="help-button" class="ink-button" aria-label="遊び方">手引</button><button id="sound-button" class="ink-button" aria-label="環境音をオンにする" aria-pressed="false"><svg><use href="#i-mute"/></svg><span>音</span></button><button id="settings-button" class="ink-button" aria-label="設定">設定</button></nav></header>
+ <div class="view-tools" aria-label="視点操作"><button id="front-view" aria-label="部屋を正面から見る">正面</button><button id="zoom-in" aria-label="部屋を拡大">＋</button><button id="zoom-out" aria-label="部屋を縮小">−</button><button id="reset-view" aria-label="初期位置と視点に戻す">戻</button></div>
  <div class="view-switch"><button id="view-left" aria-label="左を見回す">‹</button><button id="view-right" aria-label="右を見回す">›</button></div>
  <div class="view-indicator" aria-hidden="true"><span id="view-angle">正面</span><i></i><i class="active"></i><i></i></div>
- <footer class="game-hud"><div class="inventory-wrap"><span class="inventory-label">持ちもの</span><div id="inventory" class="inventory"></div></div><button id="hint-button" class="hint-button">ヒント</button></footer>
+ <section class="inventory-drawer" aria-label="持ちもの"><button id="inventory-toggle" class="inventory-toggle" aria-label="持ちものを開く" aria-expanded="false" aria-controls="inventory-panel"><span aria-hidden="true">〈 〉</span><span id="selected-item-indicator" aria-hidden="true"></span></button><div id="inventory-panel" class="inventory-panel" hidden><span class="inventory-label">持ちもの</span><div id="inventory" class="inventory"></div><button id="inspect-selected-item" aria-label="選択したアイテムを詳しく見る" disabled><svg><use href="#i-eye"/></svg></button></div></section>
+ <button id="mode-toggle" class="mode-toggle" aria-label="歩行視点に切り替える" aria-pressed="false"><svg><use href="#i-walk"/></svg><span id="mode-caption">神目線</span></button>
+ <footer class="game-hud"><button id="hint-button" class="hint-button">ヒント</button></footer>
  <p class="save-note" role="status"></p><p id="scene-message" class="scene-message" role="status"></p>
 </main>
 <dialog id="modal" class="modal" aria-labelledby="modal-title"><div class="modal-inner"><button class="modal-close" aria-label="閉じる">戻</button><div id="modal-content"></div></div></dialog>

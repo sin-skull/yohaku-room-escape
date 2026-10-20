@@ -1,8 +1,9 @@
 import * as THREE from './vendor/three.module.min.js';
 import { textureAtlas } from './assets/textures/atlas-layout.js';
 import { createGesture, clampZoom } from './interaction.js';
+import { START, canStand, walkStep, moveBy, findPath, angleDelta } from './navigation.js';
 
-export function createRoom(container, { onInspect, solved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', view = null }) {
+export function createRoom(container, { onInspect, solved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', viewMode = 'god', view = null }) {
   const imageSurfaces = surfaceMode === 'images';
   let disposed = false, lastRenderMs = 0;
   const assetLoads = [], assetErrors = [];
@@ -14,11 +15,15 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.28;
   container.appendChild(renderer.domElement);
-  const camera = new THREE.PerspectiveCamera(39, 1, .1, 70);
-  const target = new THREE.Vector3(0, 1.15, -.4);
-  const wantedTarget = target.clone();
+  const camera = new THREE.PerspectiveCamera(64, 1, .045, 35);
+  const player = new THREE.Vector3(START.x,1.58,START.z);
+  let movement={side:0,forward:0},approach=null,lastFrame=0,baseFov=64,paused=false;
   let zoom = 1, wantedZoom = 1, doorResolve = null;
-  let yaw = 0, wantedYaw = 0, pitch = .12, wantedPitch = .12, distance = 10.8;
+  let yaw = -.22, wantedYaw = -.22, pitch = -.06, wantedPitch = -.06;
+  let mode=viewMode==='walk'?'walk':'god',godYaw=.48,wantedGodYaw=.48,godPitch=.37,wantedGodPitch=.37,godZoom=1,wantedGodZoom=1;
+  const godTarget=new THREE.Vector3(0,1.15,-.4),wantedGodTarget=godTarget.clone();
+  let orbitDistance=10.8,navAnchor=null,navTurn=0,navForward=0;
+  const viewPointers=new Set();
   let frame = 0, drawerOpen = solved ? .65 : 0, doorOpen = escaped ? 1 : 0, drawerTarget = drawerOpen, doorTarget = doorOpen;
   let seed = 529;
   const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -115,7 +120,8 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     }
   }
   // Back wall, open tokonoma, fusuma door, and heavy traditional beams.
-  box(9.15,3.65,.14,0,1.76,-3.17,plaster);
+  const northShell=new THREE.Group();room.add(northShell);
+  box(9.15,3.65,.14,0,1.76,-3.17,plaster,northShell);
   box(.16,3.66,.16,-4.43,1.77,-3.05,darkTimber);box(.16,3.66,.16,4.43,1.77,-3.05,timber);
   box(9.15,.18,.22,0,3.5,-3.03,timber);box(9.15,.13,.2,0,.1,-3.03,timber);
   for(const x of [-.8,1.72])box(.12,3.45,.17,x,1.78,-3.03,timber);
@@ -262,6 +268,30 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   // Soft contact occlusion at the wall and raised step.
   flatShadow(0,-2.85,9,1.2,.28,.041);flatShadow(-4.16,0,.8,6.1,.2,.042);
 
+  // Complete the room around the player. Its rear and right walls stay physical.
+  const southShell=new THREE.Group(),eastShell=new THREE.Group(),ceilingShell=new THREE.Group();room.add(southShell,eastShell,ceilingShell);
+  box(9.15,3.65,.14,0,1.76,3.17,plaster,southShell);
+  box(.14,3.65,6.35,4.53,1.76,0,plaster,eastShell);
+  box(9.15,.12,6.35,0,3.64,0,plaster,ceilingShell);
+  for(const x of [-4.43,4.43]){
+    box(.16,3.66,.16,x,1.77,3.05,darkTimber,southShell);
+    for(const y of [.1,2.92,3.5])box(.18,.12,6.3,x,y,0,timber,x<0?shoji:eastShell);
+  }
+  for(const y of [.1,2.92,3.5])box(9.05,.13,.18,0,y,3.04,timber,southShell);
+  for(const x of [-1.45,1.5])box(.085,3.45,.12,x,1.77,3.06,paleTimber,southShell);
+  const roundPaper=tagSurface(material('#f1e8ca',{map:paperTexture,emissive:'#c4cb9b',emissiveIntensity:.12}),'washi');
+  const roundWindow=new THREE.Mesh(new THREE.CircleGeometry(.7,40),roundPaper);
+  roundWindow.rotation.y=-Math.PI/2;roundWindow.position.set(4.44,1.98,.35);eastShell.add(roundWindow);
+  const roundFrame=new THREE.Mesh(new THREE.TorusGeometry(.72,.035,6,40),darkTimber);
+  roundFrame.rotation.y=Math.PI/2;roundFrame.position.copy(roundWindow.position);eastShell.add(roundFrame);
+  // A landscape at the rear is a landmark when turning around, using the exit's image.
+  box(1.8,1.05,.04,-1.05,1.95,3.05,darkTimber,southShell);
+  box(1.65,.9,.02,-1.05,1.95,3.015,material('#e5ddc3',{map:landscape}),southShell);
+  box(1.6,.64,.62,2.7,.35,2.7,timber);
+  box(1.68,.06,.68,2.7,.7,2.7,paleTimber);
+  for(const x of [2.32,3.08])box(.7,.48,.035,x,.35,2.375,timber);
+  for(const x of [2.47,2.93])box(.035,.055,.03,x,.38,2.345,blackMetal);
+
   // Batch static pieces sharing a material; moving and clickable groups keep their identity.
   // In particular, all 324 woven border stitches become a single draw call.
   function batchStatic(parent){
@@ -330,48 +360,92 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2();
   const gesture=createGesture(),surface=container.parentElement;
   const controls=new AbortController(),listen={signal:controls.signal};
+  surface.addEventListener('contextmenu',e=>e.preventDefault(),listen);
   surface.addEventListener('pointerdown',e=>{
     if(e.button!==0||(!e.target.closest('#scene')&&!e.target.closest('.hotspot')))return;
     gesture.down(e.pointerId,e.clientX,e.clientY,e.target.closest('[data-inspect]')?.dataset.inspect);
+    viewPointers.add(e.pointerId);paused=false;
+    if(viewPointers.size===1)navAnchor={id:e.pointerId,x:e.clientX,y:e.clientY};
+    else{navAnchor=null;navTurn=navForward=0;}
     surface.setPointerCapture(e.pointerId);e.preventDefault();
   },listen);
   surface.addEventListener('pointermove',e=>{
     const action=gesture.move(e.pointerId,e.clientX,e.clientY);if(!action)return;
-    if(action.zoom)wantedZoom=clampZoom(wantedZoom*action.zoom);
-    else {wantedYaw=THREE.MathUtils.clamp(wantedYaw-action.dx*.004,-1.1,1.1);wantedPitch=THREE.MathUtils.clamp(wantedPitch+action.dy*.002,.06,.8);}
+    cancelApproach();
+    if(action.zoom){navTurn=navForward=0;if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*action.zoom);else wantedZoom=clampZoom(wantedZoom*action.zoom);}
+    else if(mode==='god'){wantedGodYaw-=action.dx*.004;wantedGodPitch=THREE.MathUtils.clamp(wantedGodPitch+action.dy*.002,.1,.85);}
+    else if(navAnchor?.id===e.pointerId&&viewPointers.size===1){navTurn=THREE.MathUtils.clamp((e.clientX-navAnchor.x)/65,-1,1);navForward=THREE.MathUtils.clamp((navAnchor.y-e.clientY)/65,-1,1);}
     updateIndicator();requestRender();
   },listen);
   surface.addEventListener('pointerup',e=>{
-    const tap=gesture.up(e.pointerId);if(!tap)return;
+    releasePointer(e.pointerId);const tap=gesture.up(e.pointerId);if(!tap)return;
     if(tap.hit){onInspect(tap.hit);return;}
     const r=container.getBoundingClientRect();pointer.set((tap.x-r.left)/r.width*2-1,-(tap.y-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);
-    const hits=raycaster.intersectObjects(pickables,true).filter(hit=>{let object=hit.object;while(object){if(!object.visible)return false;object=object.parent;}return true;});
-    if(hits.length){let obj=hits[0].object;while(obj&&!obj.userData.inspect)obj=obj.parent;if(obj)onInspect(obj.userData.inspect);}
+    const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));
+    if(hit){let obj=hit.object;while(obj&&!obj.userData.inspect)obj=obj.parent;if(obj)onInspect(obj.userData.inspect);}
   },listen);
-  surface.addEventListener('pointercancel',()=>gesture.cancel(),listen);
-  surface.addEventListener('lostpointercapture',e=>{gesture.up(e.pointerId);},listen);
-  surface.addEventListener('wheel',e=>{e.preventDefault();wantedZoom=clampZoom(wantedZoom*Math.exp(Math.max(-100,Math.min(100,e.deltaY))*.002));requestRender();},{...listen,passive:false});
+  function releasePointer(id){viewPointers.delete(id);if(navAnchor?.id===id)navAnchor=null;navTurn=navForward=0;}
+  surface.addEventListener('pointercancel',()=>{gesture.cancel();viewPointers.clear();navAnchor=null;navTurn=navForward=0;},listen);
+  surface.addEventListener('lostpointercapture',e=>{releasePointer(e.pointerId);gesture.up(e.pointerId);},listen);
+  surface.addEventListener('wheel',e=>{e.preventDefault();const factor=Math.exp(Math.max(-100,Math.min(100,e.deltaY))*.002);if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*factor);else wantedZoom=clampZoom(wantedZoom*factor);requestRender();},{...listen,passive:false});
 
-  function render(){
+  function visible(object){while(object){if(!object.visible)return false;object=object.parent;}return true;}
+  function cancelApproach(){if(approach){const resolve=approach.resolve;approach=null;resolve(false);}}
+  function aimAt(point){const dx=point.x-player.x,dz=point.z-player.z;wantedYaw=Math.atan2(dx,-dz);wantedPitch=Math.atan2(point.y-player.y,Math.hypot(dx,dz));}
+  function render(now=performance.now()){
     frame=0;
-    yaw=THREE.MathUtils.lerp(yaw,wantedYaw,.13);pitch=THREE.MathUtils.lerp(pitch,wantedPitch,.13);
-    target.lerp(wantedTarget,.13);zoom=THREE.MathUtils.lerp(zoom,wantedZoom,.13);
+    const dt=Math.min(.05,Math.max(.001,(now-(lastFrame||now-16))/1000));lastFrame=now;
+    if(!paused&&approach?.path){
+      let budget=2.6*dt;
+      while(budget>0&&approach.path.length){const next=approach.path[0],dx=next.x-player.x,dz=next.z-player.z,d=Math.hypot(dx,dz),step=Math.min(d,budget);
+        if(d<.005){approach.path.shift();continue;}
+        const p=moveBy(player,dx/d*step,dz/d*step);player.x=p.x;player.z=p.z;budget-=step;
+        if(step===d)approach.path.shift();
+      }
+      aimAt(approach.target);
+    }else if(!paused&&mode==='walk'&&(movement.side||movement.forward||navForward||navTurn)){
+      wantedYaw+=navTurn*1.5*dt;
+      const p=walkStep(player,movement.side,movement.forward+navForward,yaw,dt);player.x=p.x;player.z=p.z;
+    }
+    const ease=1-Math.exp(-14*dt);
+    yaw+=angleDelta(wantedYaw,yaw)*ease;pitch=THREE.MathUtils.lerp(pitch,wantedPitch,ease);zoom=THREE.MathUtils.lerp(zoom,wantedZoom,ease);
+    godYaw+=angleDelta(wantedGodYaw,godYaw)*ease;godPitch=THREE.MathUtils.lerp(godPitch,wantedGodPitch,ease);godZoom=THREE.MathUtils.lerp(godZoom,wantedGodZoom,ease);godTarget.lerp(wantedGodTarget,ease);
     drawerOpen=THREE.MathUtils.lerp(drawerOpen,drawerTarget,.09);doorOpen=THREE.MathUtils.lerp(doorOpen,doorTarget,.045);
     drawer.position.z=drawerOpen;door.position.x=-doorOpen*1.23;exitGlow.visible=doorOpen>.01;
-    camera.position.set(target.x+Math.sin(yaw)*distance*zoom,Math.sin(pitch)*distance*zoom+target.y,target.z+Math.cos(yaw)*Math.cos(pitch)*distance*zoom);camera.lookAt(target);camera.updateMatrixWorld();
+    if(mode==='walk'){camera.position.copy(player);camera.lookAt(player.x+Math.sin(yaw)*Math.cos(pitch),player.y+Math.sin(pitch),player.z-Math.cos(yaw)*Math.cos(pitch));}
+    else{camera.position.set(godTarget.x+Math.sin(godYaw)*orbitDistance*godZoom,godTarget.y+Math.sin(godPitch)*orbitDistance*godZoom,godTarget.z+Math.cos(godYaw)*Math.cos(godPitch)*orbitDistance*godZoom);camera.lookAt(godTarget);}
+    const inside=mode==='walk';northShell.visible=inside||Math.cos(godYaw)>=0;southShell.visible=inside||Math.cos(godYaw)<=0;eastShell.visible=inside||Math.sin(godYaw)<=0;shoji.visible=inside||Math.sin(godYaw)>=0;ceilingShell.visible=inside;
+    for(const object of [scroll,door,alcove])object.visible=northShell.visible;
+    const fov=inside?THREE.MathUtils.clamp(baseFov*zoom,30,85):(camera.aspect<1?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(41/2))/camera.aspect)):39);
+    if(Math.abs(camera.fov-fov)>.01){camera.fov=fov;camera.updateProjectionMatrix();}camera.updateMatrixWorld();
+    container.dataset.viewMode=mode;container.dataset.position=`${player.x.toFixed(3)},${player.z.toFixed(3)}`;container.dataset.heading=(inside?yaw:godYaw).toFixed(3);
     const beforeRender=performance.now();renderer.render(scene,camera);lastRenderMs=performance.now()-beforeRender;
     const w=container.clientWidth,h=container.clientHeight;
-    for(const item of hotspots){const p=item.position.clone().project(camera);item.button.style.left=`${(p.x*.5+.5)*w}px`;item.button.style.top=`${(-p.y*.5+.5)*h}px`;item.button.style.visibility=p.z<1&&p.x>-.95&&p.x<.95&&p.y>-.85&&p.y<.75?'visible':'hidden';}
+    for(const item of hotspots){
+      if(item.button.dataset.inspect==='chest')item.position.z=-1.82+drawerOpen;
+      const p=item.position.clone().project(camera);let show=p.z>-1&&p.z<1&&p.x>-.94&&p.x<.94&&p.y>-.86&&p.y<.78;
+      if(['scroll','door'].includes(item.button.dataset.inspect)&&!northShell.visible)show=false;
+      if(show&&!hotContainer.hidden){
+        const direction=item.position.clone().sub(camera.position),length=direction.length();raycaster.set(camera.position,direction.normalize());
+        const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));
+        let ownSurface=false;for(let object=hit?.object;object;object=object.parent)if(object.userData.inspect===item.button.dataset.inspect)ownSurface=true;
+        if(hit&&!ownSurface&&hit.distance<length-.18)show=false;
+      }
+      item.button.style.left=`${(p.x*.5+.5)*w}px`;item.button.style.top=`${(-p.y*.5+.5)*h}px`;item.button.style.visibility=show?'visible':'hidden';
+    }
+    if(approach&&(approach.path?!approach.path.length&&Math.abs(angleDelta(wantedYaw,yaw))<.015&&Math.abs(pitch-wantedPitch)<.015:godTarget.distanceTo(wantedGodTarget)<.01&&Math.abs(godZoom-wantedGodZoom)<.005&&Math.abs(angleDelta(wantedGodYaw,godYaw))<.015)){const resolve=approach.resolve;approach=null;resolve(true);}
     if(doorResolve&&doorOpen>.98){const resolve=doorResolve;doorResolve=null;resolve(true);}
-    if(Math.abs(yaw-wantedYaw)>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||target.distanceTo(wantedTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001)requestRender();
+    updateIndicator();
+    if((!paused&&(approach||movement.side||movement.forward||navForward||navTurn))||Math.abs(angleDelta(wantedYaw,yaw))>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||Math.abs(angleDelta(wantedGodYaw,godYaw))>.0002||Math.abs(godPitch-wantedGodPitch)>.0002||Math.abs(godZoom-wantedGodZoom)>.0002||godTarget.distanceTo(wantedGodTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001)requestRender();
   }
   function requestRender(){if(!disposed&&!frame)frame=requestAnimationFrame(render);}
   function resize(){const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;
-    camera.fov=w/h<1?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(41/2))/(w/h))):39;
-    distance=w/h<1?15.3:10.8*Math.max(1,1.6/(w/h));
+    baseFov=w/h<1?70:64;camera.fov=THREE.MathUtils.clamp(baseFov*zoom,30,85);
+    orbitDistance=w/h<1?15.3:10.8*Math.max(1,1.6/(w/h));
     camera.updateProjectionMatrix();requestRender();}
   const observer=new ResizeObserver(resize);observer.observe(container);resize();
-  if (view) { yaw=wantedYaw=view.yaw; pitch=wantedPitch=view.pitch;zoom=wantedZoom=view.zoom??1;if(view.target){target.fromArray(view.target);wantedTarget.copy(target);}updateIndicator(); }
+  if(view?.position)restoreView(view);
+  function restoreView(view){mode=view.mode==='walk'?'walk':'god';yaw=wantedYaw=view.yaw;pitch=wantedPitch=view.pitch;zoom=wantedZoom=view.zoom??1;if(view.position&&canStand({x:view.position[0],z:view.position[2]}))player.fromArray(view.position);if(view.orbit){godYaw=wantedGodYaw=view.orbit.yaw;godPitch=wantedGodPitch=view.orbit.pitch;godZoom=wantedGodZoom=view.orbit.zoom;godTarget.fromArray(view.orbit.target);wantedGodTarget.copy(godTarget);}updateIndicator();}
   const ready=Promise.all(assetLoads).then(()=>{
     if(disposed)return;
     requestRender();document.querySelector('#loading').classList.add('hidden');document.querySelector('#loading').setAttribute('aria-hidden','true');
@@ -380,18 +454,27 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();if(!disposed)document.querySelector('#scene-message').textContent='描画が中断されました。ページを再読み込みしてください。';});
   return {
     ready,
-    look(direction){wantedYaw=THREE.MathUtils.clamp(wantedYaw+direction*.25,-1.1,1.1);updateIndicator();requestRender();},
-    zoomBy(factor){wantedZoom=clampZoom(wantedZoom*factor);requestRender();},
-    frontView(){wantedYaw=0;wantedPitch=0;wantedTarget.set(0,1.5,-.4);wantedZoom=1;updateIndicator();requestRender();},
-    focus(id){const points={scroll:[-2.55,1.85,-2.7],chest:[.46,.95,-2],door:[3,1.5,-2.7],tea:[-.4,.85,.7],lantern:[-3.55,.6,-.85],window:[-3.9,1.6,0],'pickup-key':[.46,1.05,-1.7]};if(!points[id])return;wantedTarget.fromArray(points[id]);wantedYaw=id==='window'?.7:0;wantedPitch=['chest','pickup-key'].includes(id)?.3:id==='tea'?.48:.12;wantedZoom=.42;updateIndicator();requestRender();},
-    resetView(){wantedYaw=.48;wantedPitch=.37;wantedZoom=1;wantedTarget.set(0,1.15,-.4);updateIndicator();requestRender();},
+    look(direction){cancelApproach();if(mode==='walk')wantedYaw+=direction*Math.PI/4;else wantedGodYaw+=direction*Math.PI/4;requestRender();},
+    setMovement(side,forward){if(side||forward)cancelApproach();movement={side,forward};paused=false;requestRender();},
+    pauseMotion(){movement={side:0,forward:0};navTurn=navForward=0;navAnchor=null;viewPointers.clear();gesture.cancel();cancelApproach();paused=true;},
+    setMode(value){this.pauseMotion();mode=value==='walk'?'walk':'god';paused=false;requestRender();},
+    zoomBy(factor){if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*factor);else wantedZoom=clampZoom(wantedZoom*factor);requestRender();},
+    frontView(){cancelApproach();if(mode==='walk'){wantedYaw=0;wantedPitch=0;wantedZoom=1;}else{wantedGodYaw=0;wantedGodPitch=.12;}requestRender();},
+    focus(id){
+      const poses={scroll:[-2.55,-1.35,-2.55,1.8,-2.9],chest:[.46,-.85,.46,1.12,-1.95],door:[3,-1.55,3,1.45,-2.93],tea:[-.35,1.85,-.35,.85,.55],lantern:[-2.7,-.85,-3.55,.6,-.85],window:[-3.4,.4,-4.3,1.7,.4],'pickup-key':[.46,-.85,.46,1.12,-1.8]};
+      cancelApproach();movement={side:0,forward:0};const pose=poses[id];if(!pose)return Promise.resolve(true);
+      if(mode==='god'){wantedGodTarget.set(...pose.slice(2));wantedGodYaw=id==='window'?Math.PI/2:0;wantedGodPitch=['chest','pickup-key'].includes(id)?.3:.12;wantedGodZoom=.42;paused=false;requestRender();return new Promise(resolve=>{approach={resolve};});}
+      const path=findPath(player,{x:pose[0],z:pose[1]});if(!path)return Promise.resolve(false);
+      paused=false;wantedZoom=1;requestRender();return new Promise(resolve=>{approach={path,target:new THREE.Vector3(...pose.slice(2)),resolve};});
+    },
+    resetView(){this.pauseMotion();player.set(START.x,1.58,START.z);wantedYaw=-.22;wantedPitch=-.06;wantedZoom=1;wantedGodTarget.set(0,1.15,-.4);wantedGodYaw=.48;wantedGodPitch=.37;wantedGodZoom=1;requestRender();},
     openDrawer(){drawerTarget=.65;requestRender();},
     openDoor(){doorTarget=1;requestRender();return new Promise(resolve=>{if(doorOpen>.98)resolve(true);else doorResolve=resolve;});},
     takeKey(){keyItem.visible=false;requestRender();},
     restart(){doorResolve?.(false);doorResolve=null;drawerTarget=0;doorTarget=0;keyItem.visible=true;this.resetView();},
     setMarkers(value){hotContainer.hidden=!value;},
     setQuality(value){renderer.setPixelRatio(Math.min(devicePixelRatio||1,value));resize();},
-    getView(){return {yaw:wantedYaw,pitch:wantedPitch,zoom:wantedZoom,target:wantedTarget.toArray()};},
+    getView(){return {mode,yaw:wantedYaw,pitch:wantedPitch,zoom:wantedZoom,position:player.toArray(),orbit:{yaw:wantedGodYaw,pitch:wantedGodPitch,zoom:wantedGodZoom,target:wantedGodTarget.toArray()}};},
     getInfo(){
       const maps=new Set();scene.traverse(obj=>{for(const mat of [obj.material].flat()){if(mat?.map)maps.add(mat.map);}});
       let textureBytes=0;for(const map of maps){const image=map.image;if(image)textureBytes+=image.width*image.height*4*(map.generateMipmaps?4/3:1);}
@@ -405,21 +488,21 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
       const samples=[];
       for(let i=0;i<60;i++)await new Promise(resolve=>requestAnimationFrame(()=>{
         if(disposed){resolve();return;}
-        yaw=wantedYaw=.28+i/59*.4;pitch=wantedPitch=.37;target.set(0,1.15,-.4);wantedTarget.copy(target);zoom=wantedZoom=1;render();
+        mode='walk';player.set(START.x,1.58,START.z);yaw=wantedYaw=-.55+i/59*.7;pitch=wantedPitch=-.06;zoom=wantedZoom=1;render();
         if(i>=12)samples.push(lastRenderMs);resolve();
       }));
       if(disposed)throw new Error('Room was disposed during comparison');
       samples.sort((a,b)=>a-b);
       const result={...this.getInfo(),cpuMedianMs:samples[Math.floor(samples.length/2)],cpuP95Ms:samples[Math.floor(samples.length*.95)],samples:samples.length};
-      wantedYaw=previous.yaw;wantedPitch=previous.pitch;wantedZoom=previous.zoom;wantedTarget.fromArray(previous.target);updateIndicator();requestRender();return result;
+      restoreView(previous);requestRender();return result;
     },
     dispose(){
-      disposed=true;doorResolve?.(false);controls.abort();cancelAnimationFrame(frame);observer.disconnect();
+      disposed=true;cancelApproach();doorResolve?.(false);controls.abort();cancelAnimationFrame(frame);observer.disconnect();
       const geometries=new Set(),materials=new Set(),maps=new Set(textureCache.values());
       scene.traverse(obj=>{if(obj.geometry)geometries.add(obj.geometry);for(const mat of [obj.material].flat()){if(mat){materials.add(mat);if(mat.map)maps.add(mat.map);}}});
       geometries.forEach(geometry=>geometry.dispose());materials.forEach(mat=>mat.dispose());maps.forEach(map=>map.dispose());
       renderer.dispose();renderer.forceContextLoss();renderer.domElement.remove();hotspots.forEach(item=>item.button.remove());
     }
   };
-  function updateIndicator(){const index=wantedYaw<.3?0:wantedYaw>.6?2:1;document.querySelector('#view-angle').textContent=['左側','正面','右側'][index];document.querySelectorAll('.view-indicator i').forEach((el,i)=>el.classList.toggle('active',i===index));}
+  function updateIndicator(){const heading=mode==='walk'?wantedYaw:wantedGodYaw;const index=((Math.round(heading/(Math.PI/2))%4)+4)%4;document.querySelector('#view-angle').textContent=['正面','右側','背面','左側'][index];}
 }

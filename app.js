@@ -1,26 +1,34 @@
 import { createRoom } from './room.js';
 import { wrapDigit } from './interaction.js';
 import { VERSION } from './version.js';
+import { toggleItemSelection, itemAction } from './inventory.js';
 const $=s=>document.querySelector(s);
 $('#game-version').textContent=`v${VERSION}`;
 const icon=(id,cls='')=>`<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 const freshState=()=>({clue:false,solved:false,key:false,escaped:false,started:Date.now(),finished:null,hints:0,digits:[0,0,0]});
-let state=freshState(),settings={markers:true,quality:1.5,volume:.35,surfaceMode:'images'},room;
+let state=freshState(),settings={markers:true,quality:1.5,volume:.35,surfaceMode:'images',viewMode:'god'},room,selectedItem=null;
+const pressedKeys=new Set();let inventoryOpen=false,inspectionTicket=0;
 try{const progress=JSON.parse(localStorage.getItem('yohaku-progress'));if(progress&&typeof progress.clue==='boolean')state={...state,...progress};const prefs=JSON.parse(localStorage.getItem('yohaku-settings'));if(prefs)settings={...settings,...prefs};}catch{}
 state.digits=Array.from({length:3},(_,i)=>wrapDigit(Number(state.digits?.[i])||0));
 settings.surfaceMode=settings.surfaceMode==='geometry'?'geometry':'images';
+settings.viewMode=settings.viewMode==='walk'?'walk':'god';
 const modal=$('#modal');let comparing=false,ending=false;
 $('.modal-close').onclick=()=>{if(!comparing)modal.close();};
 modal.addEventListener('cancel',e=>{if(comparing)e.preventDefault();});
 modal.addEventListener('click',e=>{if(e.target===modal&&!comparing){const r=modal.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)modal.close();}});
-function show(_eyebrow,title,body){modal.classList.remove('comparison-modal','lock-modal','scroll-modal');$('#modal-content').innerHTML=`<h2 id="modal-title">${title}</h2>${body}`;if(!modal.open)modal.showModal();else $('.modal-close').focus();}
+function show(_eyebrow,title,body){stopMovement();modal.classList.remove('comparison-modal','lock-modal','scroll-modal');$('#modal-content').innerHTML=`<h2 id="modal-title">${title}</h2>${body}`;if(!modal.open)modal.showModal();else $('.modal-close').focus();}
 let toastTimer;
 function toast(message){clearTimeout(toastTimer);$('#toast').textContent=message;$('#toast').classList.add('show');toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3200);}
 function save(){try{localStorage.setItem('yohaku-progress',JSON.stringify(state));localStorage.setItem('yohaku-settings',JSON.stringify(settings));}catch{$('.save-note').textContent='保存できません';}}
 function update(){
  const items=[];if(state.clue)items.push(['note','掛け軸','scroll']);if(state.key)items.push(['key','鍵','key']);
- $('#inventory').innerHTML=Array.from({length:4},(_,i)=>items[i]?`<button class="inventory-slot filled" aria-label="${items[i][1]}を調べる" data-item="${items[i][2]}">${icon(items[i][0])}</button>`:`<span class="inventory-slot empty" aria-hidden="true">・</span>`).join('');
- $('#inventory').querySelectorAll('[data-item]').forEach(el=>el.onclick=()=>inspect(el.dataset.item));
+ const owned=items.map(item=>item[2]);if(!owned.includes(selectedItem))selectedItem=null;
+ $('#inventory').innerHTML=Array.from({length:4},(_,i)=>items[i]?`<button class="inventory-slot filled ${selectedItem===items[i][2]?'selected':''}" aria-label="${items[i][1]}を選択" aria-pressed="${selectedItem===items[i][2]}" data-item="${items[i][2]}">${icon(items[i][0])}</button>`:`<span class="inventory-slot empty" aria-hidden="true">・</span>`).join('');
+ $('#inventory').querySelectorAll('[data-item]').forEach(el=>el.onclick=()=>{const id=el.dataset.item;stopMovement();inspectionTicket++;selectedItem=toggleItemSelection(selectedItem,id,owned);update();$(`[data-item="${id}"]`)?.focus({preventScroll:true});});
+ $('#inspect-selected-item').disabled=!selectedItem;
+ $('#selected-item-indicator').innerHTML=selectedItem?icon(selectedItem==='key'?'key':'note'):'';
+ $('#inventory-toggle').setAttribute('aria-label',`${inventoryOpen?'持ちものを閉じる':'持ちものを開く'}${selectedItem?selectedItem==='key'?'・鍵を選択中':'・掛け軸を選択中':''}`);
+ updateModeButton();
  $('.live-badge').textContent=state.escaped?'脱出':'静寂の間';
 }
 try{room=createRoom($('#scene'),{onInspect:inspect,solved:state.solved,keyTaken:state.key,escaped:state.escaped,...settings});}
@@ -57,23 +65,27 @@ function showLock(){
  });
  $('#unlock').onclick=()=>{if(state.digits.join('')==='315'){state.solved=true;save();update();modal.close();room?.openDrawer();chime(660);paper('かちり。');}else{$('#code-message').textContent='動かない。';chime(180);$('.wood-lock').animate([{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(0)'}],{duration:150});}};
 }
-function inspect(id){
- if(ending)return;
- room?.focus(id);
+async function inspect(id,{approach=true,useSelected=true}={}){
+ if(ending||comparing)return;
+ const ticket=++inspectionTicket;
+ if(approach&&room&&!(await room.focus(id)))return;
+ if(ticket!==inspectionTicket)return;
+ const action=useSelected?itemAction(selectedItem,id,state):'inspect';
+ if(action==='no-effect'){paper('何も反応しないようだ。');return;}
+ if(action==='unlock-door'){await unlockDoor();return;}
  if(id==='scroll'){showScroll();return;}
  if(id==='chest'||id==='pickup-key'){if(!state.solved)showLock();else if(!state.key)showKey();else paper('何も入っていない。');return;}
  if(id==='key'){show('','真鍮の鍵',`${icon('key','key-art')}<button class="primary-button" id="back-room">しまう</button>`);$('#back-room').onclick=()=>modal.close();return;}
  if(id==='door'){
   if(state.escaped){showEnding();return;}
-  if(!state.key){paper('鍵がかかっている。');return;}
-  show('','鍵穴',`${icon('key','key-art')}<button class="primary-button" id="use-key">鍵を回す</button>`);
-  $('#use-key').onclick=async()=>{modal.close();ending=true;chime(880);const opened=await room?.openDoor();ending=false;if(opened){state.escaped=true;state.finished=Date.now();save();update();showEnding();}};return;
+  paper('鍵がかかっている。');return;
  }
  paper('何も反応しないようだ。');
 }
+async function unlockDoor(){stopMovement();ending=true;chime(880);const opened=await room?.openDoor();ending=false;if(opened){state.escaped=true;state.finished=Date.now();selectedItem=null;save();update();showEnding();}}
 function showKey(){show('','引き出しの奥',`${icon('key','key-art')}<button class="primary-button" id="take-key">手に取る</button>`);$('#take-key').onclick=()=>{state.key=true;room?.takeKey();save();update();modal.close();chime(780);paper('鍵を手に入れた。');};}
 function showEnding(){show('','余白の、その先へ',`<div class="ending-art">風　光</div><p class="center">脱出</p><button class="primary-button" id="enjoy-room">余韻を楽しむ</button><button class="secondary-button" id="play-again">もう一度</button>`);$('#enjoy-room').onclick=()=>modal.close();$('#play-again').onclick=restart;}
-function restart(){state=freshState();ending=false;room?.restart();save();update();modal.close();paper('新たな、余白。');}
+function restart(){inspectionTicket++;selectedItem=null;state=freshState();ending=false;room?.restart();save();update();modal.close();paper('新たな、余白。');}
 
 async function switchSurface(mode,{view=room?.getView(),persist=true}={}){
   if(!['images','geometry'].includes(mode))return room;
@@ -123,10 +135,10 @@ function showComparison(){
 }
 
 
-$('#help-button').onclick=()=>{show('','手ほどき',`<div class="gesture-guide"><p>一本指　⟷　見回す</p><p>二本指　↔　拡大・縮小</p><p>ひと触れ　◯　調べる</p><p>数字　↕　切り替える</p></div><p class="fine-print">マウス：ドラッグ／ホイール　鍵盤：← →／＋ −</p>`);};
+$('#help-button').onclick=()=>{show('','手ほどき',`<div class="gesture-guide"><p>足跡　⇄　歩行・神目線</p><p>歩行中：上へなぞると前進<br>下へ後退、左右へ向きを変える<br>押さえている間動き、離すと止まる</p><p>ひと触れ　◯　物に近づく</p><p>〈 〉　持ちものを開く</p><p>一度触れて選ぶ、再び触れて解除<br>選んだまま対象に触れて使う</p></div><p class="fine-print">神目線：ドラッグで回転／二本指で拡大<br>鍵盤：WASDで歩行、← →で回転</p>`);};
 $('#hint-button').onclick=()=>{
  state.hints++;save();
- const hints=!state.clue?['床の間の、墨絵を。','掛け軸は、触れると大きくなる。']:!state.solved?['同じ草木を、数えてみる。','松、竹、梅。錠の順に。','三・一・五。']:!state.key?['開いた引き出しの、奥へ。']:!state.escaped?['鍵を、襖へ。']:['風の先へ。'];
+ const hints=!state.clue?['床の間の、墨絵を。','掛け軸は、触れると大きくなる。']:!state.solved?['同じ草木を、数えてみる。','松、竹、梅。錠の順に。','三・一・五。']:!state.key?['開いた引き出しの、奥へ。']:!state.escaped?['持ちものの鍵を選び、襖に触れる。']:['風の先へ。'];
  let index=0;show('','道しるべ',`<div class="hint-body"><p id="hint-text">${hints[0]}</p></div>${hints.length>1?'<button class="secondary-button" id="more-hint">もう一枚</button>':''}`);
  $('#more-hint')?.addEventListener('click',()=>{index=Math.min(index+1,hints.length-1);$('#hint-text').textContent=hints[index];$('#more-hint').disabled=index===hints.length-1;});
 };
@@ -142,7 +154,15 @@ $('#settings-button').onclick=()=>{
 $('#view-left').onclick=()=>room?.look(-1);$('#view-right').onclick=()=>room?.look(1);
 $('#front-view').onclick=()=>room?.frontView();
 $('#reset-view').onclick=()=>room?.resetView();$('#zoom-in').onclick=()=>room?.zoomBy(.8);$('#zoom-out').onclick=()=>room?.zoomBy(1.25);
-document.addEventListener('keydown',e=>{if(modal.open||e.target.closest('button,input'))return;const actions={ArrowLeft:()=>room?.look(-1),ArrowRight:()=>room?.look(1),'+':()=>room?.zoomBy(.8),'=':()=>room?.zoomBy(.8),'-':()=>room?.zoomBy(1.25),Escape:()=>room?.resetView()};if(actions[e.key]){e.preventDefault();actions[e.key]();}});
+function stopMovement(){pressedKeys.clear();room?.pauseMotion();}
+function updateModeButton(){const walk=settings.viewMode==='walk';$('#mode-toggle').setAttribute('aria-pressed',String(walk));$('#mode-toggle').setAttribute('aria-label',walk?'神目線に切り替える':'歩行視点に切り替える');$('#mode-caption').textContent=walk?'歩行':'神目線';}
+$('#mode-toggle').onclick=()=>{stopMovement();settings.viewMode=settings.viewMode==='walk'?'god':'walk';room?.setMode(settings.viewMode);updateModeButton();save();};
+$('#inventory-toggle').onclick=()=>{stopMovement();inspectionTicket++;inventoryOpen=!inventoryOpen;$('#inventory-panel').hidden=!inventoryOpen;$('#inventory-toggle').setAttribute('aria-expanded',String(inventoryOpen));update();};
+$('#inspect-selected-item').onclick=()=>{if(selectedItem)inspect(selectedItem,{approach:false,useSelected:false});};
+function updateKeyboard(){if(settings.viewMode==='walk')room?.setMovement(Number(pressedKeys.has('d'))-Number(pressedKeys.has('a')),Number(pressedKeys.has('w')||pressedKeys.has('ArrowUp'))-Number(pressedKeys.has('s')||pressedKeys.has('ArrowDown')));}
+document.addEventListener('keydown',e=>{if(modal.open||e.target.closest('input'))return;const key=e.key.length===1?e.key.toLowerCase():e.key;if(['w','a','s','d','ArrowUp','ArrowDown'].includes(key)&&settings.viewMode==='walk'){e.preventDefault();pressedKeys.add(key);updateKeyboard();return;}const actions={ArrowLeft:()=>room?.look(-1),ArrowRight:()=>room?.look(1),'+':()=>room?.zoomBy(.8),'=':()=>room?.zoomBy(.8),'-':()=>room?.zoomBy(1.25),Escape:()=>{selectedItem=null;update();room?.resetView();}};if(actions[e.key]){e.preventDefault();actions[e.key]();}});
+document.addEventListener('keyup',e=>{pressedKeys.delete(e.key.length===1?e.key.toLowerCase():e.key);updateKeyboard();});
+window.addEventListener('blur',stopMovement);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopMovement();});
 
 let audio,master,ambient,soundOn=false;
 async function toggleSound(){
