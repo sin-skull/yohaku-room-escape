@@ -1,0 +1,68 @@
+from pathlib import Path
+from html import escape as e
+import json
+
+root=Path(__file__).resolve().parents[1]
+d=json.loads((root/'docs/design-r2.json').read_text(encoding='utf-8'))
+
+def node(x,y,w,h,top,bottom,extra=''):
+ return f'<g {extra}><rect x="{x}" y="{y}" width="{w}" height="{h}" rx="3"/><text x="{x+w/2}" y="{y+34}" text-anchor="middle">{e(top)}</text><text class="sub" x="{x+w/2}" y="{y+62}" text-anchor="middle">{e(bottom)}</text></g>'
+flow='''<svg id="puzzle-chart" viewBox="0 0 920 735" role="img" aria-label="P1から紙を得てP2へ。P3は独立。松と竹を得て帰還すると通知が出る。P4は先に解くことも可能。三つの札でP5へ。" xmlns="http://www.w3.org/2000/svg"><defs><marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="currentColor"/></marker></defs>
+<g class="edges" marker-end="url(#flow-arrow)"><path d="M190 220V290"/><path d="M190 380V565H280V610"/><path d="M850 175H890V655H710"/><path d="M700 530V570H600V610"/></g>
+<g class="events" marker-end="url(#flow-arrow)"><path d="M340 335H395"/><path d="M700 220V270"/><path d="M600 370V405H700V440"/></g>'''
+flow+=node(170,15,580,80,'目的：玄関の木箱から鍵を得て、館を出る','最初に鍵穴・紋札の枠・鍵の意匠を見せる')
+flow+=node(40,130,300,90,'P1　屏風と小箱','同じ枠を合わせる → 紙を得る')
+flow+=node(550,130,300,90,'P3　木工模型','上面の線をつなぐ → 松の札')
+flow+=node(40,290,300,90,'P2　透かし紙と行灯','図と廊下を対応 → 竹の札')
+flow+=node(395,270,420,100,'帰還すると、和紙の知らせが出現','破線：出現条件。梅を先に得たら出さない','class="event-node"')
+flow+=node(550,440,300,90,'P4　知らせの裏と引き戸','裏を見る・閉める → 梅の札')
+flow+=node(190,610,520,100,'P5　紋札の裏が館になる','三つの札 → 地図の完成 → 鍵 → 玄関')
+flow+='''<text class="sub" x="55" y="460">P2とP3は順不同。</text><text class="sub" x="55" y="488">P3は序盤に見つけてもよい。</text><text class="sub" x="55" y="516">P4を先に解く行動も受け入れる。</text><text class="sub" x="55" y="544">実線：必要な物。破線：演出の条件。</text></svg>'''
+
+es='''<svg id="experience-chart" viewBox="0 0 920 285" role="img" aria-label="気になる、証拠を見つける、仮説を立てる、試す、物が変わる、納得する。反応から考え直せる。" xmlns="http://www.w3.org/2000/svg"><defs><marker id="es-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="currentColor"/></marker></defs><g class="edges" marker-end="url(#es-arrow)"><path d="M140 110H160M300 110H320M460 110H480M620 110H640M780 110H800"/><path d="M550 155V225H390V155"/></g>'''
+for i,(a,b) in enumerate([('気になる','何のための物？'),('証拠を見る','同じ形・場所'),('仮説を立てる','こう使えるかも'),('自分で試す','戻して試せる'),('物が変わる','開く・つながる'),('納得する','だから開くんだ')]):
+ es+=node(i*160,65,140 if i<5 else 120,90,a,b)
+es+='<text class="sub" x="465" y="253" text-anchor="middle">違う結果なら証拠を見直す。操作失敗と推理の誤りを混ぜない。</text></svg>'
+
+cards=''
+for p in d['puzzles']:
+ rows=''.join(f'<dt>{label}</dt><dd>{e(p[key])}</dd>' for key,label in [('evidence','見える証拠'),('reason','なぜそう考えられるか'),('action','試すこと'),('reward','結果と狙い'),('check','検証すること')])
+ hints=' → '.join(e(h) for h in p['hint'])
+ cards+=f'<details class="puzzle" id="{p["id"]}"><summary><span>{p["id"].upper()}</span><b>{e(p["name"])}</b><small>{e(p["area"])}</small></summary><dl>{rows}<dt>段階ヒント</dt><dd>{hints}</dd></dl></details>'
+
+milestones=''.join(f'<li><span class="step">{code}</span><div><b>{e(name)}</b><small>{e(status)}</small></div></li>' for code,name,status in d['milestones'])
+
+html='''<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>余白 — 再設計R2とロードマップ</title><style>
+:root{font-family:'Yu Mincho','Hiragino Mincho ProN',serif;background:#eee9d8;color:#30392f;font-synthesis:none}*{box-sizing:border-box}body{margin:0}main{max-width:1040px;margin:auto;padding:36px 24px 70px}header{display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid #91977e;padding-bottom:18px}h1{font-size:28px;font-weight:500;letter-spacing:.12em;margin:0}h2{font-size:24px;font-weight:500;margin:46px 0 18px}p{line-height:2;margin:14px 0}a{color:#465638;text-underline-offset:4px}a:hover{color:#873f32}.eyebrow,small{font-size:13px;color:#59634e;line-height:1.8}.status{display:block;border-left:3px solid #954936;padding:10px 16px;background:#e4ddc4;font-size:14px;line-height:1.9;margin-top:24px}.lead{font-size:22px;line-height:1.9;max-width:38em}.links{display:flex;flex-wrap:wrap;gap:14px 24px}.diagnosis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px}.diagnosis article{border-top:2px solid #79856b;padding:14px;background:#e6e1cc}.diagnosis b{font-weight:500}.diagnosis p{font-size:14px;line-height:1.85}.diagram-open{width:100%;display:block;border:1px solid #92987e;padding:16px;background:#f6f0dd;cursor:zoom-in;color:inherit;font:inherit}.diagram-open svg{display:block;width:100%;height:auto}.diagram-open span{display:block;font-size:13px;margin-top:12px}.diagram-open:focus-visible,button:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid #954735;outline-offset:4px}svg rect{fill:#eee9d3;stroke:#7e896f}svg text{fill:#30392f;font:20px 'Yu Mincho',serif}svg .sub{font-size:15px;fill:#526047}svg .edges{fill:none;stroke:#667b56;stroke-width:1.5}svg .events{fill:none;stroke:#98634a;stroke-width:1.5;stroke-dasharray:7 5}svg .event-node rect{fill:#e6dcc0;stroke:#98634a}.puzzle{border-bottom:1px solid #a1a48b;padding:0 12px;background:#f4eedb}.puzzle summary{display:flex;align-items:center;gap:12px;min-height:75px;padding:14px 0;cursor:pointer;list-style:none}.puzzle summary:after{content:'＋';margin-left:auto}.puzzle[open] summary:after{content:'−'}.puzzle summary span{font-family:serif;font-size:14px;color:#8b4938}.puzzle summary b{font-weight:500;font-size:18px}.puzzle summary small{margin-left:auto}.puzzle dl{display:grid;grid-template-columns:165px 1fr;gap:12px 20px;padding:4px 0 22px;margin:0;line-height:1.9;font-size:15px}.puzzle dt{color:#59654c}.puzzle dd{margin:0}.controls{width:100%;border-collapse:collapse;font-size:15px;line-height:1.9}.controls td,.controls th{padding:13px 12px;border-bottom:1px solid #a6aa92;text-align:left;vertical-align:top}.controls th{font-weight:500}.controls td:first-child{width:33%}.roadmap{list-style:none;padding:0;display:grid;grid-template-columns:repeat(2,1fr);gap:13px 24px}.roadmap li{display:flex;gap:17px;padding:16px 8px;border-top:1px solid #919b7e}.roadmap .step{font:17px serif;color:#844431}.roadmap b{display:block;font-size:17px;font-weight:500}.roadmap small{display:block;margin-top:6px}.criteria{background:#e2dfc9;padding:18px 24px}.criteria li{line-height:1.9;margin:7px 0}.sources{font-size:14px;line-height:2}.sources li{margin:8px 0}.footer{margin-top:40px;border-top:1px solid #91977e;padding-top:16px}dialog{width:min(1200px,calc(100vw - 20px));height:min(950px,calc(100svh - 24px));padding:0;border:1px solid #939a80;background:#f4eed9;color:inherit}dialog::backdrop{background:#233528b5}.toolbar{display:flex;gap:8px;align-items:center;justify-content:flex-end;padding:12px;border-bottom:1px solid #a4a991}.toolbar span{margin-right:auto;font-size:13px}.toolbar button{font:inherit;min-width:44px;min-height:44px;border:1px solid #959b80;background:#e6dfc7;color:inherit;cursor:pointer}.diagram-view{height:calc(100% - 72px);overflow:hidden;display:grid;place-items:center;touch-action:none;cursor:grab}.diagram-view svg{width:100%;height:100%;max-height:100%;transform-origin:center;user-select:none}@media(max-width:650px){main{padding:24px 16px 50px}header{align-items:flex-start}h1{font-size:23px}.lead{font-size:19px}.diagnosis{grid-template-columns:1fr}.diagram-open{padding:6px}.puzzle summary{flex-wrap:wrap;gap:8px}.puzzle summary small{width:100%;margin-left:31px}.puzzle summary:after{position:absolute;right:24px}.puzzle dl{grid-template-columns:1fr;gap:5px}.puzzle dd{margin-bottom:12px}.roadmap{grid-template-columns:1fr}.toolbar{gap:4px}.toolbar span{font-size:11px}.controls th,.controls td{padding:10px 6px}.diagram-view svg{min-width:0}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style></head><body><main>
+<header><div><p class="eyebrow">余白 ／ 制作資料・解答を含む</p><h1>再設計R2とロードマップ</h1></div><a href="./">公開ゲームへ</a></header>
+<div class="status">2026-10-22 改訂 ／ 公開ゲームはv1.4.0。下記の新操作・新しい五問は設計案です。人による楽しさの評価は未実施です。</div>
+<p class="lead">「何をすればいいか分からない」から、<br>「これなら試せる」「だから開くんだ」へ。</p>
+<p>問題数を先に埋めず、操作・証拠・結果がつながる短い脱出を作ります。3Dの自由な見回しと神目線は残し、基本操作はタップ中心に変えます。最初に完成させるのは主要な謎5問＋探索・道具使用。制限時間はありません。</p>
+<nav class="links"><a href="#controls">操作</a><a href="#flow">新しい謎の流れ</a><a href="#puzzles">なぜ解けるか</a><a href="#roadmap">制作順と合格条件</a><a href="./docs/REDESIGN-R2.md">詳細仕様</a></nav>
+<h2>どこが分からなかったのか</h2><div class="diagnosis"><article><b>操作が推理を邪魔していた</b><p>スワイプが移動と見回しを兼ね、正解位置で「写す」が現れる。どう動くかを覚える負担が大きい。</p></article><article><b>対応の根拠が弱かった</b><p>墨の三がなぜ松で、なぜ格子の行なのか。作者が知る割り当てを、プレイヤーが確かめにくい。</p></article><article><b>距離を増やすだけだった</b><p>数字の置き場所を分けても、行く理由は増えない。使いたい物を先に見せ、発見で用途がつながる配置へ。</p></article></div>
+<h2 id="controls">調査して決めた基本操作</h2><p>JammsworksとFUNKYLANDの開発者掲載の操作例を基礎に、調査・移動・使用をタップへ整理します。下記は本作の次期案であり、両作品の全仕様を写したものではありません。</p>
+<table class="controls"><thead><tr><th>入力</th><th>何が起きるか</th></tr></thead><tbody><tr><td>物をタップ</td><td>寄って正面から調べる。近接中は動かす・拾う。</td></tr><tr><td>左右矢印／ドラッグ</td><td>90度ずつ向く／自由に360度見回す。スワイプで勝手に歩かない。</td></tr><tr><td>床・出入口をタップ</td><td>その場所へ歩く、隣の区画へ進む。</td></tr><tr><td>近接中の下矢印</td><td>一つ前の視点へ戻る。</td></tr><tr><td>アイテムをタップ</td><td>選択して対象へ使う。間を置いた再タップで解除。</td></tr><tr><td>素早い二回タップ</td><td>詳細を開く。裏返し・回転・拡大。目の印でも開ける。</td></tr><tr><td>上部の〈 〉／足跡</td><td>持ちものを収納／室内と神目線を切り替える。</td></tr><tr><td>ヒント</td><td>観察先→関係→具体操作。見るだけで進行しない。</td></tr></tbody></table>
+<h2 id="flow">発見がつながる進行図</h2><p>目的は玄関の鍵。実線は必要な物、破線は知らせの出現条件です。P4の戸を先に閉める行動も成功にし、通知を見る順序を強制しません。</p>
+<button class="diagram-open" data-chart="puzzle-chart" aria-label="五問の進行図を開いて拡大する">FLOW<span>触れて拡大 ／ ピンチ・ホイール・ドラッグ</span></button>
+<h2 id="puzzles">各問で、なぜそう考えられるか</h2><p>開くと「見える証拠・理由・操作・結果・別解の確認」を読めます。図や札の形は制作前であり、次の試作で解釈が一意になるかを確かめます。</p>CARDS
+<h2>ES図 — 考える過程と感情の狙い</h2><p>驚きを押しつけず、自分の仮説を物の変化で確かめられるようにします。納得や楽しさは設計意図で、確認済みの感想ではありません。</p><button class="diagram-open" data-chart="experience-chart" aria-label="体験設計図を開いて拡大する">ES<span>触れて拡大</span></button>
+<h2 id="roadmap">制作順 — 次は操作と導入一問</h2><p>まずR1とR2を作り、初見での納得を確かめます。五問を一気に作ってから説明で補う進め方は改めます。稼働と試遊が未確定のため、日数は確約しません。</p><ol class="roadmap">MILESTONES</ol>
+<div class="criteria"><p>暫定の合格条件。業界標準や達成済みの値ではありません。</p><ul><li>最終の初見5人中4人が、口頭の操作説明なしで調査・戻る・使用できる。</li><li>各問で5人中4人が、証拠から操作を考えた理由を説明できる。</li><li>5人中3人以上が、自分で思いついて試した場面と根拠を具体的に挙げる。</li><li>誤答・先回り・保存復帰で進行不能ゼロ。iOS／Androidの実機を別に確認。</li></ul><a href="./docs/ROADMAP.md">ロードマップ全文</a> ／ <a href="./docs/PLAYTEST.md">試遊の記録方法</a></div>
+<h2>人間の制作者と公式説明を参照</h2><ul class="sources"><li><a href="https://media.gdcvault.com/gdconline10/slides/11545-Puzzing_Writing_Best_Practices.pdf">Clara Fernández-Vara：Puzzle Writing: Best Practices</a> — 必要な情報を作品内に与え、実装前の評価と試遊を分ける。</li><li><a href="https://www.gdcvault.com/play/1027368/Independent-Games-Summit-Sparking-Curiosity">Kelsey Beachum：Outer WildsのGDC講演公開概要</a> — 知りたいことが探索の動機になる考え方。</li><li><a href="https://play.google.com/store/apps/details?hl=ja&amp;id=org.unity.jamms.giethoorn">Jammsworks：開発者掲載の操作説明</a> ／ <a href="https://apps.apple.com/jp/app/id1326735689">FUNKYLAND：開発者掲載の操作説明</a> — タップ調査・使用、アイテム拡大の参照。</li><li><a href="https://www.fireproofgames.com/games/the-room">Fireproof Games：The Room公式紹介</a> — 3Dと少ないタッチ操作の両立。詳細ジェスチャーまでは断定しない。</li></ul>
+<div class="footer"><p>30問案は拡張候補として保存。短い完成版の基準を満たして和室版を一段落させ、移動・入力・保存を次の魔法脱出へ引き継ぎます。</p><nav class="links"><a href="./docs/REDESIGN-R2.md">五問の詳細設計</a><a href="./docs/WING.md">公開v1.4.0の機能試作</a><a href="./docs/PUZZLE-30.md">旧30段階案</a><a href="https://github.com/sin-skull/yohaku-room-escape">GitHub</a></nav></div>
+</main><dialog id="chart-dialog" aria-label="設計図の拡大"><div class="toolbar"><span>ドラッグで移動・ピンチで拡大</span><button id="chart-out" aria-label="図を縮小">−</button><button id="chart-in" aria-label="図を拡大">＋</button><button id="chart-reset">原寸</button><button id="chart-close">閉じる</button></div><div class="diagram-view" id="chart-view"></div></dialog>
+<script type="module">
+import {createGesture} from './interaction.js';
+const dialog=document.querySelector('#chart-dialog'),view=document.querySelector('#chart-view');
+let chart=null,scale=1,x=0,y=0;const gesture=createGesture(),paint=()=>{if(chart)chart.style.transform=`translate(${x}px,${y}px) scale(${scale})`;};
+const zoom=f=>{scale=Math.max(.5,Math.min(4,scale*f));paint();};
+document.querySelectorAll('[data-chart]').forEach(button=>button.onclick=()=>{chart=document.getElementById(button.dataset.chart).cloneNode(true);chart.removeAttribute('id');view.replaceChildren(chart);scale=1;x=y=0;paint();dialog.showModal();});
+document.querySelector('#chart-close').onclick=()=>dialog.close();document.querySelector('#chart-in').onclick=()=>zoom(1.25);document.querySelector('#chart-out').onclick=()=>zoom(.8);document.querySelector('#chart-reset').onclick=()=>{scale=1;x=y=0;paint();};
+view.onwheel=e=>{e.preventDefault();zoom(Math.exp(-e.deltaY*.002));};view.onpointerdown=e=>{gesture.down(e.pointerId,e.clientX,e.clientY);view.setPointerCapture(e.pointerId);};view.onpointermove=e=>{const a=gesture.move(e.pointerId,e.clientX,e.clientY);if(!a)return;if(a.zoom)zoom(1/a.zoom);else{x+=a.dx;y+=a.dy;paint();}};view.onpointerup=e=>gesture.up(e.pointerId);view.onpointercancel=()=>gesture.cancel();dialog.addEventListener('close',()=>gesture.cancel());
+</script></body></html>'''
+
+html=html.replace('>FLOW<','>'+flow+'<').replace('>ES<','>'+es+'<').replace('CARDS',cards).replace('MILESTONES',milestones)
+assert '>FLOW<' not in html and 'CARDS' not in html
+(root/'project.html').write_text(html,encoding='utf-8')
+print('Built reviewable R2 page with five expandable puzzle cards and two zoomable diagrams')

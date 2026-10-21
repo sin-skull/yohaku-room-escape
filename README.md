@@ -4,6 +4,8 @@ Three.jsで作った、和室と廊下と書院を巡る脱出ゲームです。
 
 現在の公開版：**v1.4.0** / [遊ぶ](https://sin-skull.github.io/yohaku-room-escape/) / [拡大できる制作図](https://sin-skull.github.io/yohaku-room-escape/project.html)
 
+公開v1.4.0は機能試作として再評価しています。[再設計R2](docs/REDESIGN-R2.md)と[ロードマップ](docs/ROADMAP.md)で、タップ中心の操作と、証拠・操作・結果がつながる五問を設計しました。新しい操作・謎は未実装です。
+
 [制作の指針・ES図・ロードマップ](docs/README.md) / [30段階の分岐設計案（未実装）](docs/PUZZLE-30.md) / [変更履歴](CHANGELOG.md)
 
 部屋はピンチ・ホイール・＋−で拡大縮小できます。「正面」で正面へ、「戻」で初期位置・視点へ戻ります。掛け軸の図もタップ・ピンチで拡大でき、数字錠はタップ・上下・スワイプで循環します。ヒントは専用ボタンから開けます。
