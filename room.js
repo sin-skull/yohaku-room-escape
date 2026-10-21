@@ -1,13 +1,15 @@
 import * as THREE from './vendor/three.module.min.js';
-import { textureAtlas } from './assets/textures/atlas-layout.js?v=1.4.0';
-import { createGesture, clampZoom } from './interaction.js?v=1.4.0';
-import { createNavigation, angleDelta } from './navigation.js?v=1.4.0';
-import { AREAS, areaId, hasObject, passageAt } from './mansion.js?v=1.4.0';
-import { GOD_TARGET, GOD_DISTANCE, GOD_PITCH, PEEP_EYE, PEEP_TARGET, inkFragments, alignedObservation } from './perspective.js?v=1.4.0';
+import { textureAtlas } from './assets/textures/atlas-layout.js?v=1.5.0';
+import { createGesture, clampZoom } from './interaction.js?v=1.5.0';
+import { createNavigation, angleDelta } from './navigation.js?v=1.5.0';
+import { AREAS, areaId, hasObject, passageAt } from './mansion.js?v=1.5.0';
+import { createRoutePlanner } from './routes.js?v=1.5.0';
+import { GOD_TARGET, GOD_DISTANCE, GOD_PITCH, PEEP_EYE, PEEP_TARGET, inkFragments, alignedObservation } from './perspective.js?v=1.5.0';
 
-export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservation = ()=>{}, location = 'parlor', solved = false, flowerSolved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', viewMode = 'god', view = null }) {
+export function createRoom(container, { onInspect, onTravel = ()=>{}, onRoutes = ()=>{}, onObservation = ()=>{}, location = 'parlor', solved = false, flowerSolved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', viewMode = 'walk', view = null }) {
   location=areaId(location);const area=AREAS[location],START=area.start;
   const {canStand,walkStep,moveBy,findPath}=createNavigation(location);
+  const routePlanner=createRoutePlanner(location);let routeSignature='';
   const imageSurfaces = surfaceMode === 'images';
   let disposed = false, lastRenderMs = 0;
   const assetLoads = [], assetErrors = [];
@@ -26,7 +28,7 @@ export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservat
   let yaw = -.22, wantedYaw = -.22, pitch = -.06, wantedPitch = -.06;
   let mode=viewMode==='walk'?'walk':'god',godYaw=.48,wantedGodYaw=.48,godPitch=.37,wantedGodPitch=.37,godZoom=1,wantedGodZoom=1;
   const godTarget=new THREE.Vector3(0,1.15,-.4),wantedGodTarget=godTarget.clone();
-  let orbitDistance=10.8,navAnchor=null,navTurn=0,navForward=0;
+  let orbitDistance=10.8;
   const viewPointers=new Set();
   let frame = 0, drawerOpen = solved ? .65 : 0, doorOpen = escaped ? 1 : 0, drawerTarget = drawerOpen, doorTarget = doorOpen;
   let flowerOpen=flowerSolved?1:0,flowerTarget=flowerOpen,lastObservation;
@@ -486,16 +488,14 @@ export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservat
     if(e.button!==0||(!e.target.closest('#scene')&&!e.target.closest('.hotspot')))return;
     gesture.down(e.pointerId,e.clientX,e.clientY,e.target.closest('[data-inspect]')?.dataset.inspect);
     viewPointers.add(e.pointerId);paused=false;
-    if(viewPointers.size===1)navAnchor={id:e.pointerId,x:e.clientX,y:e.clientY};
-    else{navAnchor=null;navTurn=navForward=0;}
     surface.setPointerCapture(e.pointerId);e.preventDefault();
   },listen);
   surface.addEventListener('pointermove',e=>{
     const action=gesture.move(e.pointerId,e.clientX,e.clientY);if(!action)return;
     cancelApproach();
-    if(action.zoom){navTurn=navForward=0;if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*action.zoom);else wantedZoom=clampZoom(wantedZoom*action.zoom);}
+    if(action.zoom){if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*action.zoom);else wantedZoom=clampZoom(wantedZoom*action.zoom);}
     else if(mode==='god'){wantedGodYaw-=action.dx*.004;wantedGodPitch=THREE.MathUtils.clamp(wantedGodPitch+action.dy*.002,.1,1.4);}
-    else if(navAnchor?.id===e.pointerId&&viewPointers.size===1){navTurn=THREE.MathUtils.clamp((e.clientX-navAnchor.x)/65,-1,1);navForward=THREE.MathUtils.clamp((navAnchor.y-e.clientY)/65,-1,1);}
+    else{wantedYaw-=action.dx*.0045;wantedPitch=THREE.MathUtils.clamp(wantedPitch+action.dy*.003,-.85,.85);}
     updateIndicator();requestRender();
   },listen);
   surface.addEventListener('pointerup',e=>{
@@ -505,8 +505,8 @@ export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservat
     const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));
     if(hit){if(hit.object.userData.latticeCells){onInspect(`lattice-${hit.instanceId}`);return;}let obj=hit.object;while(obj&&!obj.userData.inspect)obj=obj.parent;if(obj)onInspect(obj.userData.inspect);}
   },listen);
-  function releasePointer(id){viewPointers.delete(id);if(navAnchor?.id===id)navAnchor=null;navTurn=navForward=0;}
-  surface.addEventListener('pointercancel',()=>{gesture.cancel();viewPointers.clear();navAnchor=null;navTurn=navForward=0;},listen);
+  function releasePointer(id){viewPointers.delete(id);}
+  surface.addEventListener('pointercancel',()=>{gesture.cancel();viewPointers.clear();},listen);
   surface.addEventListener('lostpointercapture',e=>{releasePointer(e.pointerId);gesture.up(e.pointerId);},listen);
   surface.addEventListener('wheel',e=>{e.preventDefault();const factor=Math.exp(Math.max(-100,Math.min(100,e.deltaY))*.002);if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*factor);else wantedZoom=clampZoom(wantedZoom*factor);requestRender();},{...listen,passive:false});
 
@@ -524,9 +524,8 @@ export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservat
         if(step===d)approach.path.shift();
       }
       aimAt(approach.target);
-    }else if(!paused&&mode==='walk'&&(movement.side||movement.forward||navForward||navTurn)){
-      wantedYaw+=navTurn*1.5*dt;
-      const p=walkStep(player,movement.side,movement.forward+navForward,yaw,dt);player.x=p.x;player.z=p.z;
+    }else if(!paused&&mode==='walk'&&(movement.side||movement.forward)){
+      const p=walkStep(player,movement.side,movement.forward,yaw,dt);player.x=p.x;player.z=p.z;
     }
     const ease=1-Math.exp(-14*dt);
     yaw+=angleDelta(wantedYaw,yaw)*ease;pitch=THREE.MathUtils.lerp(pitch,wantedPitch,ease);zoom=THREE.MathUtils.lerp(zoom,wantedZoom,ease);
@@ -566,11 +565,15 @@ export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservat
     if(approach&&(approach.path?!approach.path.length&&Math.abs(angleDelta(wantedYaw,yaw))<.015&&Math.abs(pitch-wantedPitch)<.015:godTarget.distanceTo(wantedGodTarget)<.01&&Math.abs(godZoom-wantedGodZoom)<.005&&Math.abs(angleDelta(wantedGodYaw,godYaw))<.015)){const resolve=approach.resolve;approach=null;resolve(true);}
     if(doorResolve&&doorOpen>.98){const resolve=doorResolve;doorResolve=null;resolve(true);}
     // Crossing an actual doorway while walking changes area; never fire on restore.
-    if(inside&&!paused&&!crossing&&(movement.side||movement.forward||navForward||approach?.path)){
+    if(inside&&!paused&&!crossing&&(movement.side||movement.forward||approach?.path)){
       const next=passageAt(location,player);if(next){crossing=true;onTravel(next);}
     }
     updateIndicator();
-    if((!paused&&(approach||movement.side||movement.forward||navForward||navTurn))||Math.abs(angleDelta(wantedYaw,yaw))>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||Math.abs(angleDelta(wantedGodYaw,godYaw))>.0002||Math.abs(godPitch-wantedGodPitch)>.0002||Math.abs(godZoom-wantedGodZoom)>.0002||godTarget.distanceTo(wantedGodTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001||Math.abs(flowerOpen-flowerTarget)>.001)requestRender();
+    const routeHeading=Math.atan2(direction.x,-direction.z);
+    const routes=approach||movement.side||movement.forward?[]:routePlanner.options(player,routeHeading,{mode});
+    const signature=routes.map(p=>`${p.id}:${p.direction}`).join('|');
+    if(signature!==routeSignature){routeSignature=signature;onRoutes(routes);}
+    if((!paused&&(approach||movement.side||movement.forward))||Math.abs(angleDelta(wantedYaw,yaw))>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||Math.abs(angleDelta(wantedGodYaw,godYaw))>.0002||Math.abs(godPitch-wantedGodPitch)>.0002||Math.abs(godZoom-wantedGodZoom)>.0002||godTarget.distanceTo(wantedGodTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001||Math.abs(flowerOpen-flowerTarget)>.001)requestRender();
   }
   function requestRender(){if(!disposed&&!frame)frame=requestAnimationFrame(render);}
   function resize(){const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;
@@ -588,9 +591,19 @@ export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservat
   renderer.domElement.addEventListener('webglcontextlost',e=>{e.preventDefault();if(!disposed)document.querySelector('#scene-message').textContent='描画が中断されました。ページを再読み込みしてください。';});
   return {
     ready,
-    look(direction){cancelApproach();if(mode==='walk')wantedYaw+=direction*Math.PI/4;else wantedGodYaw+=direction*Math.PI/4;requestRender();},
+    look(direction){cancelApproach();if(mode==='walk')wantedYaw+=direction*Math.PI/2;else wantedGodYaw+=direction*Math.PI/2;requestRender();},
     setMovement(side,forward){if(side||forward)cancelApproach();movement={side,forward};paused=false;requestRender();},
-    pauseMotion(){movement={side:0,forward:0};navTurn=navForward=0;navAnchor=null;viewPointers.clear();gesture.cancel();cancelApproach();paused=true;},
+    pauseMotion(){movement={side:0,forward:0};viewPointers.clear();gesture.cancel();cancelApproach();paused=true;requestRender();},
+    navigateRoute(id){
+      const direction=camera.getWorldDirection(new THREE.Vector3()),heading=Math.atan2(direction.x,-direction.z);
+      const route=routePlanner.options(player,heading,{mode}).find(p=>p.id===id);
+      if(!route)return Promise.resolve(false);
+      cancelApproach();movement={side:0,forward:0};
+      if(mode==='god')return Promise.resolve(route.kind==='passage');
+      const path=findPath(player,{x:route.stand[0],z:route.stand[1]});if(!path)return Promise.resolve(false);
+      paused=false;wantedZoom=1;requestRender();
+      return new Promise(resolve=>{approach={path,target:new THREE.Vector3(...route.point),resolve};});
+    },
     setMode(value){this.pauseMotion();mode=value==='walk'?'walk':'god';paused=false;requestRender();},
     zoomBy(factor){if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*factor);else wantedZoom=clampZoom(wantedZoom*factor);requestRender();},
     frontView(){cancelApproach();if(mode==='walk'){wantedYaw=0;wantedPitch=0;wantedZoom=1;}else{wantedGodYaw=0;wantedGodPitch=.12;}requestRender();},

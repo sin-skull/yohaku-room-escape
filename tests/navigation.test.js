@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {START,BOUNDS,canStand,moveBy,walkStep,findPath,angleDelta} from '../navigation.js?v=1.4.0';
+import {START,BOUNDS,canStand,moveBy,walkStep,findPath,angleDelta} from '../navigation.js?v=1.5.0';
 test('player starts inside the room and cannot stand in walls or furniture',()=>{
  assert.ok(canStand(START));assert.equal(canStand({x:20,z:0}),false);assert.equal(canStand({x:0,z:.5}),false);assert.equal(canStand({x:-2.5,z:-2.5}),false);
 });

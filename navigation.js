@@ -1,5 +1,5 @@
 // Metres in the area's floor plane. Collision is kinematic, not physics.
-import {AREAS,areaId} from './mansion.js?v=1.4.0';
+import {AREAS,areaId} from './mansion.js?v=1.5.0';
 export const START = Object.freeze(AREAS.parlor.start);
 export const BOUNDS = Object.freeze(AREAS.parlor.bounds);
 const RADIUS=.19;

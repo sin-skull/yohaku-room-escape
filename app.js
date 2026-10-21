@@ -1,27 +1,28 @@
-import { createRoom } from './room.js?v=1.4.0';
-import { wrapDigit } from './interaction.js?v=1.4.0';
-import { VERSION } from './version.js?v=1.4.0';
-import { toggleItemSelection, itemAction } from './inventory.js?v=1.4.0';
-import { CLUE_SYMBOLS, CLUE_INK, flowerCell, restoreObservations, nextHint } from './puzzles.js?v=1.4.0';
-import { AREAS, areaId, restoreJourney } from './mansion.js?v=1.4.0';
+import { createRoom } from './room.js?v=1.5.0';
+import { wrapDigit } from './interaction.js?v=1.5.0';
+import { VERSION } from './version.js?v=1.5.0';
+import { toggleItemSelection, itemAction } from './inventory.js?v=1.5.0';
+import { CLUE_SYMBOLS, CLUE_INK, flowerCell, restoreObservations, nextHint } from './puzzles.js?v=1.5.0';
+import { AREAS, areaId, restoreJourney } from './mansion.js?v=1.5.0';
 const $=s=>document.querySelector(s);
 $('#game-version').textContent=`v${VERSION}`;
 const icon=(id,cls='')=>`<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
 const freshState=()=>({schema:4,area:'parlor',visited:['parlor'],views:{},clue:false,observations:{pine:false,bamboo:false,plum:false},flowerSolved:false,solved:false,key:false,escaped:false,started:Date.now(),finished:null,hints:0,digits:[0,0,0]});
-let state=freshState(),settings={markers:true,quality:1.5,volume:.35,surfaceMode:'images',viewMode:'god'},room,selectedItem=null;
+let state=freshState(),settings={markers:true,quality:1.5,volume:.35,surfaceMode:'images',viewMode:'walk',controlRevision:2},room,selectedItem=null;
 const pressedKeys=new Set();let inventoryOpen=false,inspectionTicket=0;
-let observedCandidate=null,restoredProgress=null;
-try{const progress=JSON.parse(localStorage.getItem('yohaku-progress'));if(progress&&typeof progress.clue==='boolean'){restoredProgress=progress;state={...state,...progress};}const prefs=JSON.parse(localStorage.getItem('yohaku-settings'));if(prefs)settings={...settings,...prefs};}catch{}
+let observedCandidate=null,restoredProgress=null,legacyControls=true,availableRoutes=[],routeBusy=false;
+try{const progress=JSON.parse(localStorage.getItem('yohaku-progress'));if(progress&&typeof progress.clue==='boolean'){restoredProgress=progress;state={...state,...progress};}const prefs=JSON.parse(localStorage.getItem('yohaku-settings'));if(prefs){legacyControls=prefs.controlRevision!==2;settings={...settings,...prefs};}}catch{}
 state.digits=Array.from({length:3},(_,i)=>wrapDigit(Number(state.digits?.[i])||0));
 state.observations=restoreObservations(restoredProgress||state);state.flowerSolved=!!(state.flowerSolved||state.solved);Object.assign(state,restoreJourney(restoredProgress));state.schema=4;
 settings.surfaceMode=settings.surfaceMode==='geometry'?'geometry':'images';
-settings.viewMode=settings.viewMode==='walk'?'walk':'god';
+settings.viewMode=legacyControls?'walk':settings.viewMode==='god'?'god':'walk';settings.controlRevision=2;
+if(legacyControls)state.views={};
 const modal=$('#modal');let comparing=false,ending=false,travelling=false;
 $('.modal-close').onclick=()=>{if(!comparing)modal.close();};
 modal.addEventListener('cancel',e=>{if(comparing)e.preventDefault();});
-modal.addEventListener('close',refreshObservation);
+modal.addEventListener('close',()=>{refreshObservation();refreshRoutes();});
 modal.addEventListener('click',e=>{if(e.target===modal&&!comparing){const r=modal.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)modal.close();}});
-function show(_eyebrow,title,body){stopMovement();modal.classList.remove('comparison-modal','lock-modal','scroll-modal');$('#modal-content').innerHTML=`<h2 id="modal-title">${title}</h2>${body}`;if(!modal.open)modal.showModal();else $('.modal-close').focus();refreshObservation();}
+function show(_eyebrow,title,body){stopMovement();modal.classList.remove('comparison-modal','lock-modal','scroll-modal');$('#modal-content').innerHTML=`<h2 id="modal-title">${title}</h2>${body}`;if(!modal.open)modal.showModal();else $('.modal-close').focus();refreshObservation();refreshRoutes();}
 let toastTimer;
 function toast(message){clearTimeout(toastTimer);$('#toast').textContent=message;$('#toast').classList.add('show');toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3200);}
 function save(){try{localStorage.setItem('yohaku-progress',JSON.stringify(state));localStorage.setItem('yohaku-settings',JSON.stringify(settings));}catch{$('.save-note').textContent='保存できません';}}
@@ -35,15 +36,33 @@ function update(){
  $('#inventory-toggle').setAttribute('aria-label',`${inventoryOpen?'持ちものを閉じる':'持ちものを開く'}${selectedItem?selectedItem==='key'?'・鍵を選択中':'・覚え書きを選択中':''}`);
  updateModeButton();
  refreshObservation();
+ refreshRoutes();
  $('.live-badge').textContent=state.escaped?'脱出':AREAS[state.area].name;
 }
-function buildRoom(view=state.views[state.area]){return createRoom($('#scene'),{onInspect:inspect,onTravel:travel,onObservation:observationChanged,location:state.area,flowerSolved:state.flowerSolved,solved:state.solved,keyTaken:state.key,escaped:state.escaped,...settings,view});}
+function buildRoom(view=state.views[state.area]){availableRoutes=[];refreshRoutes();return createRoom($('#scene'),{onInspect:inspect,onTravel:travel,onRoutes:routesChanged,onObservation:observationChanged,location:state.area,flowerSolved:state.flowerSolved,solved:state.solved,keyTaken:state.key,escaped:state.escaped,...settings,view});}
 try{room=buildRoom();}
 catch(error){console.error(error);$('#loading').innerHTML='<span class="loading-mark">余白</span><p>描画を準備できませんでした。</p><button class="primary-button" id="retry">再読み込み</button>';$('#retry').onclick=()=>location.reload();}
 function paper(message){toast(message);}
+function routesChanged(routes){availableRoutes=routes;refreshRoutes();}
+function refreshRoutes(){
+ const controls=$('#travel-options');if(!controls)return;
+ const routes=modal?.open||routeBusy||travelling||ending||comparing?[]:availableRoutes;
+ const signature=routes.map(p=>`${p.id}:${p.direction}`).join('|');
+ controls.hidden=!routes.length;
+ if(controls.dataset.routes===signature)return;
+ controls.dataset.routes=signature;
+ controls.innerHTML=routes.map(p=>`<button class="travel-arrow ${p.direction}" data-route="${p.id}" aria-label="${p.label.replace(/へ$/,'')}へ移動"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 28V5M6 15 16 5l10 10"/></svg><span>${p.label.replace(/へ$/,'')}</span></button>`).join('');
+}
+async function followRoute(id){
+ if(routeBusy||travelling||modal.open||ending||comparing||!availableRoutes.some(p=>p.id===id))return;
+ stopMovement();const ticket=++inspectionTicket,sourceRoom=room;routeBusy=true;refreshRoutes();
+ try{const arrived=await sourceRoom.navigateRoute(id);if(!arrived||ticket!==inspectionTicket||room!==sourceRoom)return;
+  if(id.startsWith('passage:'))await travel(id.slice(8));
+ }finally{routeBusy=false;refreshRoutes();}
+}
 async function travel(destination){
  const next=areaId(destination);if(travelling||ending||comparing||next===state.area||!AREAS[state.area].passages.some(p=>p.to===next))return;
- travelling=true;inspectionTicket++;stopMovement();modal.close();
+ travelling=true;inspectionTicket++;stopMovement();modal.close();refreshRoutes();
  const old=state.area;state.views[old]=room.getView();
  $('#area-transition').textContent=AREAS[next].name;$('#area-transition').hidden=false;
  try{
@@ -52,7 +71,7 @@ async function travel(destination){
   if(!state.visited.includes(next))state.visited.push(next);
   room=buildRoom(null);await room.ready;save();update();
  }catch(error){console.error(error);$('#scene-message').textContent='移動を完了できませんでした。再読み込みしてください。';save();}
- finally{$('#area-transition').hidden=true;travelling=false;}
+ finally{$('#area-transition').hidden=true;travelling=false;refreshRoutes();}
 }
 function cluePicture(id){const paths={pine:'<path d="M6 9h28v18H6zM2 25l18 14 18-14M20 0v6"/>',bamboo:'<path d="M5 4h30v32H5zM8 20s5-8 12-8 12 8 12 8-5 8-12 8S8 20 8 20Z"/><circle cx="20" cy="20" r="3"/>',plum:Array.from({length:9},(_,i)=>`<rect x="${3+i%3*12}" y="${3+Math.floor(i/3)*12}" width="9" height="9"/>`).join('')};return `<svg viewBox="0 0 40 42" aria-hidden="true">${paths[id]}</svg>`;}
 function observationChanged(id){observedCandidate=id;refreshObservation();}
@@ -166,7 +185,7 @@ function showComparison(){
 }
 
 
-$('#help-button').onclick=()=>{show('','手ほどき',`<div class="gesture-guide"><p>足跡　⇄　歩行・神目線</p><p>歩行中：上へなぞると前進<br>下へ後退、左右へ向きを変える<br>押さえている間動き、離すと止まる</p><p>ひと触れ　◯　物に近づく</p><p>〈 〉　持ちものを開く</p><p>一度触れて選ぶ、再び触れて解除<br>選んだまま対象に触れて使う</p></div><p class="fine-print">神目線：ドラッグで回転／二本指で拡大<br>鍵盤：WASDで歩行、← →で回転</p>`);};
+$('#help-button').onclick=()=>{show('','手ほどき',`<div class="gesture-guide"><p>画面をなぞる　見回す</p><p>下の矢印　その場所へ進む<br>今の向きから行ける場所だけ現れる</p><p>ひと触れ　物に近づいて調べる</p><p>足跡　⇄　室内・神目線</p><p>〈 〉　持ちものを開く</p><p>一度触れて選ぶ、再び触れて解除<br>選んだまま対象に触れて使う</p></div><p class="fine-print">二本指で拡大。歩行中もスライドは見回し。<br>鍵盤：WASDで歩行、← →で向きを変更</p>`);};
 $('#map-button').onclick=()=>{
  show('','館の間取り',`<div class="wing-map" role="img" aria-label="静寂の間と書院が表廊下につながり、表廊下の先に玄関がある"><div class="map-exit">玄関</div><div class="map-rooms">${['parlor','hall','study'].map(id=>`<div class="map-room ${state.area===id?'here':''}"><b>${AREAS[id].name}</b><span>${state.area===id?'此処':state.visited.includes(id)?'足跡':'未訪'}</span>${id==='parlor'?'<small>掛け軸・格子</small>':id==='hall'?'<small>覗き棚・玄関</small>':'<small>飾り棚・箪笥</small>'}</div>`).join('')}</div></div>`);
 };
@@ -185,7 +204,7 @@ $('#settings-button').onclick=()=>{
  $('#compare-surfaces').onclick=showComparison;
  $('#reset-game').onclick=()=>{show('','記憶を白紙に',`<p class="center">持ちものと進行が消えます。</p><button class="primary-button" id="confirm-reset">白紙に戻す</button><button class="secondary-button" id="cancel-reset">戻る</button>`);$('#confirm-reset').onclick=restart;$('#cancel-reset').onclick=()=>modal.close();};
 };
-$('#view-left').onclick=()=>room?.look(-1);$('#view-right').onclick=()=>room?.look(1);
+$('#travel-options').onclick=e=>{const button=e.target.closest('[data-route]');if(button)followRoute(button.dataset.route);};
 $('#front-view').onclick=()=>room?.frontView();
 $('#reset-view').onclick=()=>room?.resetView();$('#zoom-in').onclick=()=>room?.zoomBy(.8);$('#zoom-out').onclick=()=>room?.zoomBy(1.25);
 function stopMovement(){pressedKeys.clear();room?.pauseMotion();}

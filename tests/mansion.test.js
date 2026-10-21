@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AREAS,hasObject,passageAt,restoreJourney} from '../mansion.js?v=1.4.0';
-import {createNavigation} from '../navigation.js?v=1.4.0';
+import {AREAS,hasObject,passageAt,restoreJourney} from '../mansion.js?v=1.5.0';
+import {createNavigation} from '../navigation.js?v=1.5.0';
 
 test('clues, combination, chest and exit are spread across three different areas',()=>{
  assert.ok(hasObject('study','high-shelf'));assert.ok(hasObject('hall','peep-shelf'));assert.ok(hasObject('parlor','lattice'));
