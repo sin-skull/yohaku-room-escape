@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {toggleItemSelection,itemAction} from '../inventory.js';
+import {toggleItemSelection,itemAction} from '../inventory.js?v=1.3.0';
 test('one tap selects, a second tap deselects, and another item replaces selection',()=>{
  const owned=['scroll','key'];assert.equal(toggleItemSelection(null,'key',owned),'key');assert.equal(toggleItemSelection('key','key',owned),null);assert.equal(toggleItemSelection('key','scroll',owned),'scroll');assert.equal(toggleItemSelection('scroll','missing',owned),'scroll');
 });

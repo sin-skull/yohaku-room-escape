@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"><meta name="theme-color" content="#303b30"><meta name="description" content="墨絵を読み、錠を回す。光と静けさの和室脱出ゲーム。"><title>余白 — YOHAKU</title><link rel="icon" href="./mark.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css"></head><body>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"><meta name="theme-color" content="#303b30"><meta name="description" content="墨絵を読み、錠を回す。光と静けさの和室脱出ゲーム。"><title>余白 — YOHAKU</title><link rel="icon" href="./mark.svg" type="image/svg+xml"><link rel="stylesheet" href="./style.css?v=1.3.0"></head><body>
   <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg"><defs>
     <symbol id="i-sound" viewBox="0 0 24 24"><path d="m11 5-6 5H2v4h3l6 5zM16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
     <symbol id="i-mute" viewBox="0 0 24 24"><path d="m11 5-6 5H2v4h3l6 5zM17 9l5 6m0-6-5 6"/></symbol>
@@ -23,14 +23,15 @@
   <div id="hotspots" class="hotspots"></div>
   <div id="loading" class="loading"><span class="loading-mark">余白</span><p>しつらえ中</p></div>
  </div>
- <header class="site-header"><div class="brand"><h1>余白</h1><span class="live-badge">静寂の間</span><span id="game-version" class="game-version" aria-label="ゲームのバージョン">v1.2.0</span></div><nav class="header-actions" aria-label="メニュー"><button id="help-button" class="ink-button" aria-label="遊び方">手引</button><button id="sound-button" class="ink-button" aria-label="環境音をオンにする" aria-pressed="false"><svg><use href="#i-mute"/></svg><span>音</span></button><button id="settings-button" class="ink-button" aria-label="設定">設定</button></nav></header>
- <div class="view-tools" aria-label="視点操作"><button id="front-view" aria-label="部屋を正面から見る">正面</button><button id="zoom-in" aria-label="部屋を拡大">＋</button><button id="zoom-out" aria-label="部屋を縮小">−</button><button id="reset-view" aria-label="初期位置と視点に戻す">戻</button></div>
+ <header class="site-header"><div class="brand"><h1>余白</h1><span class="live-badge">静寂の間</span><span id="game-version" class="game-version" aria-label="ゲームのバージョン">v1.3.0</span></div><nav class="header-actions" aria-label="メニュー"><button id="help-button" class="ink-button" aria-label="遊び方">手引</button><button id="sound-button" class="ink-button" aria-label="環境音をオンにする" aria-pressed="false"><svg><use href="#i-mute"/></svg><span>音</span></button><button id="settings-button" class="ink-button" aria-label="設定">設定</button></nav></header>
+ <div class="view-tools" aria-label="視点操作"><button id="overhead-view" aria-label="神目線で俯瞰する" title="俯瞰">俯</button><button id="front-view" aria-label="部屋を正面から見る">正面</button><button id="zoom-in" aria-label="部屋を拡大">＋</button><button id="zoom-out" aria-label="部屋を縮小">−</button><button id="reset-view" aria-label="初期位置と視点に戻す">戻</button></div>
  <div class="view-switch"><button id="view-left" aria-label="左を見回す">‹</button><button id="view-right" aria-label="右を見回す">›</button></div>
  <div class="view-indicator" aria-hidden="true"><span id="view-angle">正面</span><i></i><i class="active"></i><i></i></div>
+ <div id="observation-bar" class="observation-bar" hidden><span id="observation-symbol"></span><button id="record-observation" aria-label="見え方を写す">写す</button></div>
  <section class="inventory-drawer" aria-label="持ちもの"><button id="inventory-toggle" class="inventory-toggle" aria-label="持ちものを開く" aria-expanded="false" aria-controls="inventory-panel"><span aria-hidden="true">〈 〉</span><span id="selected-item-indicator" aria-hidden="true"></span></button><div id="inventory-panel" class="inventory-panel" hidden><span class="inventory-label">持ちもの</span><div id="inventory" class="inventory"></div><button id="inspect-selected-item" aria-label="選択したアイテムを詳しく見る" disabled><svg><use href="#i-eye"/></svg></button></div></section>
  <button id="mode-toggle" class="mode-toggle" aria-label="歩行視点に切り替える" aria-pressed="false"><svg><use href="#i-walk"/></svg><span id="mode-caption">神目線</span></button>
  <footer class="game-hud"><button id="hint-button" class="hint-button">ヒント</button></footer>
  <p class="save-note" role="status"></p><p id="scene-message" class="scene-message" role="status"></p>
 </main>
 <dialog id="modal" class="modal" aria-labelledby="modal-title"><div class="modal-inner"><button class="modal-close" aria-label="閉じる">戻</button><div id="modal-content"></div></div></dialog>
-<div id="toast" class="toast" role="status" aria-live="polite"></div><script type="module" src="./app.js"></script></body></html>
+<div id="toast" class="toast" role="status" aria-live="polite"></div><script type="module" src="./app.js?v=1.3.0"></script></body></html>

@@ -1,9 +1,10 @@
 import * as THREE from './vendor/three.module.min.js';
-import { textureAtlas } from './assets/textures/atlas-layout.js';
-import { createGesture, clampZoom } from './interaction.js';
-import { START, canStand, walkStep, moveBy, findPath, angleDelta } from './navigation.js';
+import { textureAtlas } from './assets/textures/atlas-layout.js?v=1.3.0';
+import { createGesture, clampZoom } from './interaction.js?v=1.3.0';
+import { START, canStand, walkStep, moveBy, findPath, angleDelta } from './navigation.js?v=1.3.0';
+import { GOD_TARGET, GOD_DISTANCE, GOD_PITCH, PEEP_EYE, PEEP_TARGET, inkFragments, alignedObservation } from './perspective.js?v=1.3.0';
 
-export function createRoom(container, { onInspect, solved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', viewMode = 'god', view = null }) {
+export function createRoom(container, { onInspect, onObservation = ()=>{}, solved = false, flowerSolved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', viewMode = 'god', view = null }) {
   const imageSurfaces = surfaceMode === 'images';
   let disposed = false, lastRenderMs = 0;
   const assetLoads = [], assetErrors = [];
@@ -25,6 +26,7 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   let orbitDistance=10.8,navAnchor=null,navTurn=0,navForward=0;
   const viewPointers=new Set();
   let frame = 0, drawerOpen = solved ? .65 : 0, doorOpen = escaped ? 1 : 0, drawerTarget = drawerOpen, doorTarget = doorOpen;
+  let flowerOpen=flowerSolved?1:0,flowerTarget=flowerOpen,lastObservation;
   let seed = 529;
   const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
   const pickables = [];
@@ -138,9 +140,13 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   box(1.02,1.97,.025,-2.55,1.74,-2.937,material('#b1ac8a'),scroll);
   const calligraphy = texture((c,s)=>{
     c.fillStyle='#ece6cf';c.fillRect(0,0,s,s);c.fillStyle='#313b29';c.textAlign='center';c.font='105px "Yu Mincho", "Noto Serif JP", serif';
-    c.font='38px serif';c.lineWidth=2.5;c.strokeStyle='#383d30';
-    const paths=['M22 41V19M10 21l12-14 12 14M5 31l17-17 17 17M4 40l18-17 18 17','M22 43V5M17 14h10M17 27h10M22 21Q8 7 5 16q7 11 17 5M22 32q14-17 17-9-3 11-17 9','M22 18c-10-17-24 1-11 9-10 15 11 23 13 8 17 8 23-15 8-16 2-15-19-18-10-1Z'];
-    ['松','竹','梅'].forEach((label,i)=>{const x=145+i*110;c.fillText(label,x,90);for(let j=0;j<[3,1,5][i];j++){c.save();c.translate(x-23,110+j*57);c.stroke(new Path2D(paths[i]));if(i===2){c.beginPath();c.arc(23,26,3,0,Math.PI*2);c.stroke();}c.restore();}});
+    c.font='46px serif';c.lineWidth=3;c.strokeStyle='#383d30';
+    ['松','竹','梅'].forEach((label,i)=>{const x=140+i*118;c.fillText(label,x,105);c.save();c.translate(x,190);
+      if(i===0){c.strokeRect(-38,-20,76,55);c.beginPath();c.moveTo(-52,20);c.lineTo(0,65);c.lineTo(52,20);c.moveTo(0,-65);c.lineTo(0,-32);c.stroke();}
+      if(i===1){c.strokeRect(-42,-30,84,70);c.beginPath();c.ellipse(0,3,24,12,0,0,Math.PI*2);c.stroke();c.beginPath();c.arc(0,3,5,0,Math.PI*2);c.stroke();}
+      if(i===2){for(let r=0;r<3;r++)for(let col=0;col<3;col++)c.strokeRect(-42+col*28,-35+r*28,22,22);}
+      c.restore();});
+    c.font='25px serif';c.fillText('松 ↓　竹 →',256,365);
     c.fillStyle='#a35d454f';c.fillRect(380,411,38,38);c.fillStyle='#8b4934';c.font='23px serif';c.fillText('和',399,438);
   });
   box(.74,1.5,.012,-2.55,1.78,-2.917,material('#f4f0db',{map:calligraphy}),scroll);
@@ -292,6 +298,48 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   for(const x of [2.32,3.08])box(.7,.48,.035,x,.35,2.375,timber);
   for(const x of [2.47,2.93])box(.035,.055,.03,x,.38,2.345,blackMetal);
 
+  const inkMaterial=new THREE.MeshBasicMaterial({color:'#242b24',polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1});
+  function paintedQuad(points,parent){const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(points.flat(),3));geometry.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,1,1,0,1],2));geometry.setIndex([0,1,2,0,2,3]);geometry.computeVertexNormals();const mesh=new THREE.Mesh(geometry,inkMaterial);parent.add(mesh);return mesh;}
+  // Nine real paint fragments on shelf tops at three different heights form 三.
+  const highShelf=new THREE.Group();room.add(highShelf);clickable(highShelf,'high-shelf');
+  for(const x of [2.3,4.02])for(const z of [-.18,1.5])box(.055,2.82,.055,x,1.41,z,paleTimber,highShelf);
+  for(const height of [2.05,2.38,2.7])box(.055,.045,1.72,4.02,height-.065,.66,paleTimber,highShelf);
+  for(const fragment of inkFragments('pine')){
+    const xs=fragment.points.map(p=>p[0]),zs=fragment.points.map(p=>p[2]),x=(Math.min(...xs)+Math.max(...xs))/2,z=(Math.min(...zs)+Math.max(...zs))/2;
+    box(Math.max(...xs)-Math.min(...xs)+.004,.025,Math.max(...zs)-Math.min(...zs)+.005,x,fragment.plane-.015,z,paleTimber,highShelf);
+    // A thin bracket meets each board at its rear edge without covering another stroke.
+    const rear=Math.min(...zs);
+    box(4.02-x,.018,.018,(x+4.02)/2,fragment.plane-.035,rear,paleTimber,highShelf);
+    paintedQuad(fragment.points.map(p=>[p[0],p[1]+.003,p[2]]),highShelf);
+  }
+  // A closed, roofed horizontal chamber: overhead views cannot see its inner strokes.
+  const peepShelf=new THREE.Group();room.add(peepShelf);clickable(peepShelf,'peep-shelf');
+  for(const x of [-3.31,-2.19])box(.08,.54,1.36,x,1.59,2.22,darkTimber,peepShelf);
+  box(1.2,.05,1.36,-2.75,1.685,2.22,timber,peepShelf);
+  box(1.2,.05,1.36,-2.75,1.475,2.22,timber,peepShelf);
+  box(1.2,.5,.05,-2.75,1.59,2.89,plaster,peepShelf);
+  box(1.2,.18,.08,-2.75,1.75,1.58,paleTimber,peepShelf);
+  box(1.2,.18,.08,-2.75,1.4,1.58,paleTimber,peepShelf);
+  for(const x of [-3.25,-2.25])for(const z of [1.7,2.7])box(.06,1.38,.06,x,.7,z,darkTimber,peepShelf);
+  for(const fragment of inkFragments('bamboo'))paintedQuad(fragment.points,peepShelf);
+  const standingMark=new THREE.Mesh(new THREE.RingGeometry(.23,.25,40),new THREE.MeshBasicMaterial({color:'#8b4f38',transparent:true,opacity:.58,side:THREE.DoubleSide}));standingMark.rotation.x=-Math.PI/2;standingMark.position.set(PEEP_EYE[0],.055,PEEP_EYE[2]);room.add(standingMark);
+  // Pine gives a row; bamboo gives a column. The panel opens to a five-petal flower.
+  const lattice=new THREE.Group();room.add(lattice);clickable(lattice,'lattice');
+  box(1.18,1.08,.08,.46,2.3,-2.96,darkTimber,lattice);
+  const flowerImage=texture((c,s)=>{c.fillStyle='#eee4c9';c.fillRect(0,0,s,s);c.strokeStyle='#343c2d';c.lineWidth=5;
+    for(let i=0;i<5;i++){c.save();c.translate(s/2,s/2);c.rotate(i*Math.PI*2/5);c.beginPath();c.ellipse(0,-s*.21,s*.115,s*.19,0,0,Math.PI*2);c.stroke();c.restore();}
+    c.beginPath();c.arc(s/2,s/2,s*.055,0,Math.PI*2);c.stroke();c.fillStyle='#8f4d39';c.font='25px serif';c.fillText('梅',s*.78,s*.9);},256);
+  const flowerFace=new THREE.Mesh(new THREE.PlaneGeometry(.88,.84),material('#f2e9cf',{map:flowerImage}));flowerFace.position.set(.46,2.3,-2.91);lattice.add(flowerFace);
+  const latticeCover=new THREE.Group();lattice.add(latticeCover);
+  box(1.12,.98,.04,.46,2.3,-2.88,timber,latticeCover);
+  const cellGeometry=new THREE.BoxGeometry(.26,.25,.045),cellMaterial=material('#b8ab83',{map:woodTexture});
+  if(imageSurfaces){const tile=textureAtlas.tiles.wood,uv=cellGeometry.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setXY(i,(tile.x+uv.getX(i)*tile.width)/textureAtlas.width,1-(tile.y+(1-uv.getY(i))*tile.height)/textureAtlas.height);uv.needsUpdate=true;}
+  const latticeCells=new THREE.InstancedMesh(cellGeometry,cellMaterial,9);latticeCells.userData.inspect='lattice';latticeCells.userData.latticeCells=true;latticeCover.add(latticeCells);
+  const cellMatrix=new THREE.Matrix4();for(let i=0;i<9;i++){cellMatrix.makeTranslation(.46+(i%3-1)*.31,2.3+(1-Math.floor(i/3))*.29,-2.835);latticeCells.setMatrixAt(i,cellMatrix);}
+  const latticeLabels=texture((c,s)=>{c.clearRect(0,0,s,s);c.fillStyle='#303a29';c.font='34px serif';c.textAlign='center';c.fillText('竹 →',s/2,48);c.fillText('松',30,120);c.fillText('↓',30,165);},256);
+  const labelMesh=new THREE.Mesh(new THREE.PlaneGeometry(1.5,1.42),new THREE.MeshBasicMaterial({map:latticeLabels,transparent:true,depthWrite:false}));labelMesh.position.set(.46,2.36,-2.80);latticeCover.add(labelMesh);
+  labelMesh.raycast=()=>{};
+
   // Batch static pieces sharing a material; moving and clickable groups keep their identity.
   // In particular, all 324 woven border stitches become a single draw call.
   function batchStatic(parent){
@@ -349,7 +397,7 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
   }
   batchStatic(room);
 
-  const hotspotSpecs=[['scroll','掛け軸を調べる',[-2.55,1.85,-2.86]],['chest','箪笥を調べる',[.46,1.15,-1.82]],['door','襖を調べる',[3.18,1.5,-2.8]],['tea','卓上を調べる',[-.45,.98,.7]]];
+  const hotspotSpecs=[['scroll','掛け軸を調べる',[-2.55,1.85,-2.86]],['chest','箪笥を調べる',[.46,1.15,-1.82]],['door','襖を調べる',[3.18,1.5,-2.8]],['tea','卓上を調べる',[-.45,.98,.7]],['high-shelf','高い飾り棚を調べる',[3.1,2.42,.6]],['peep-shelf','覗き棚を調べる',[-2.75,1.65,2.05]],['lattice','梅の格子を調べる',[.46,2.3,-2.78]]];
   const hotContainer=document.querySelector('#hotspots');
   hotContainer.replaceChildren();
   const hotspots=hotspotSpecs.map(([id,label,pos])=>{
@@ -373,7 +421,7 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     const action=gesture.move(e.pointerId,e.clientX,e.clientY);if(!action)return;
     cancelApproach();
     if(action.zoom){navTurn=navForward=0;if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*action.zoom);else wantedZoom=clampZoom(wantedZoom*action.zoom);}
-    else if(mode==='god'){wantedGodYaw-=action.dx*.004;wantedGodPitch=THREE.MathUtils.clamp(wantedGodPitch+action.dy*.002,.1,.85);}
+    else if(mode==='god'){wantedGodYaw-=action.dx*.004;wantedGodPitch=THREE.MathUtils.clamp(wantedGodPitch+action.dy*.002,.1,1.4);}
     else if(navAnchor?.id===e.pointerId&&viewPointers.size===1){navTurn=THREE.MathUtils.clamp((e.clientX-navAnchor.x)/65,-1,1);navForward=THREE.MathUtils.clamp((navAnchor.y-e.clientY)/65,-1,1);}
     updateIndicator();requestRender();
   },listen);
@@ -382,7 +430,7 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     if(tap.hit){onInspect(tap.hit);return;}
     const r=container.getBoundingClientRect();pointer.set((tap.x-r.left)/r.width*2-1,-(tap.y-r.top)/r.height*2+1);raycaster.setFromCamera(pointer,camera);
     const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));
-    if(hit){let obj=hit.object;while(obj&&!obj.userData.inspect)obj=obj.parent;if(obj)onInspect(obj.userData.inspect);}
+    if(hit){if(hit.object.userData.latticeCells){onInspect(`lattice-${hit.instanceId}`);return;}let obj=hit.object;while(obj&&!obj.userData.inspect)obj=obj.parent;if(obj)onInspect(obj.userData.inspect);}
   },listen);
   function releasePointer(id){viewPointers.delete(id);if(navAnchor?.id===id)navAnchor=null;navTurn=navForward=0;}
   surface.addEventListener('pointercancel',()=>{gesture.cancel();viewPointers.clear();navAnchor=null;navTurn=navForward=0;},listen);
@@ -411,6 +459,7 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     yaw+=angleDelta(wantedYaw,yaw)*ease;pitch=THREE.MathUtils.lerp(pitch,wantedPitch,ease);zoom=THREE.MathUtils.lerp(zoom,wantedZoom,ease);
     godYaw+=angleDelta(wantedGodYaw,godYaw)*ease;godPitch=THREE.MathUtils.lerp(godPitch,wantedGodPitch,ease);godZoom=THREE.MathUtils.lerp(godZoom,wantedGodZoom,ease);godTarget.lerp(wantedGodTarget,ease);
     drawerOpen=THREE.MathUtils.lerp(drawerOpen,drawerTarget,.09);doorOpen=THREE.MathUtils.lerp(doorOpen,doorTarget,.045);
+    flowerOpen=THREE.MathUtils.lerp(flowerOpen,flowerTarget,.1);latticeCover.position.y=flowerOpen*.94;
     drawer.position.z=drawerOpen;door.position.x=-doorOpen*1.23;exitGlow.visible=doorOpen>.01;
     if(mode==='walk'){camera.position.copy(player);camera.lookAt(player.x+Math.sin(yaw)*Math.cos(pitch),player.y+Math.sin(pitch),player.z-Math.cos(yaw)*Math.cos(pitch));}
     else{camera.position.set(godTarget.x+Math.sin(godYaw)*orbitDistance*godZoom,godTarget.y+Math.sin(godPitch)*orbitDistance*godZoom,godTarget.z+Math.cos(godYaw)*Math.cos(godPitch)*orbitDistance*godZoom);camera.lookAt(godTarget);}
@@ -420,11 +469,16 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     if(Math.abs(camera.fov-fov)>.01){camera.fov=fov;camera.updateProjectionMatrix();}camera.updateMatrixWorld();
     container.dataset.viewMode=mode;container.dataset.position=`${player.x.toFixed(3)},${player.z.toFixed(3)}`;container.dataset.heading=(inside?yaw:godYaw).toFixed(3);
     const beforeRender=performance.now();renderer.render(scene,camera);lastRenderMs=performance.now()-beforeRender;
+    const direction=camera.getWorldDirection(new THREE.Vector3());let observation=alignedObservation(camera.position.toArray(),direction.toArray());
+    if(!observation&&flowerOpen>.99){const toFlower=new THREE.Vector3(.46,2.3,-2.91).sub(camera.position);if(toFlower.length()<6&&direction.dot(toFlower.normalize())>.98){raycaster.set(camera.position,toFlower);const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));if(hit?.object===flowerFace)observation='plum';}}
+    container.dataset.observation=observation||'';
+    if(observation!==lastObservation){lastObservation=observation;onObservation(observation);}
     const w=container.clientWidth,h=container.clientHeight;
     for(const item of hotspots){
       if(item.button.dataset.inspect==='chest')item.position.z=-1.82+drawerOpen;
       const p=item.position.clone().project(camera);let show=p.z>-1&&p.z<1&&p.x>-.94&&p.x<.94&&p.y>-.86&&p.y<.78;
-      if(['scroll','door'].includes(item.button.dataset.inspect)&&!northShell.visible)show=false;
+      if(['scroll','door','lattice'].includes(item.button.dataset.inspect)&&!northShell.visible)show=false;
+      if(item.button.dataset.inspect==='lattice')item.button.setAttribute('aria-label',flowerOpen>.99?'梅の花紋を調べる':'梅の格子を調べる');
       if(show&&!hotContainer.hidden){
         const direction=item.position.clone().sub(camera.position),length=direction.length();raycaster.set(camera.position,direction.normalize());
         const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));
@@ -436,7 +490,7 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     if(approach&&(approach.path?!approach.path.length&&Math.abs(angleDelta(wantedYaw,yaw))<.015&&Math.abs(pitch-wantedPitch)<.015:godTarget.distanceTo(wantedGodTarget)<.01&&Math.abs(godZoom-wantedGodZoom)<.005&&Math.abs(angleDelta(wantedGodYaw,godYaw))<.015)){const resolve=approach.resolve;approach=null;resolve(true);}
     if(doorResolve&&doorOpen>.98){const resolve=doorResolve;doorResolve=null;resolve(true);}
     updateIndicator();
-    if((!paused&&(approach||movement.side||movement.forward||navForward||navTurn))||Math.abs(angleDelta(wantedYaw,yaw))>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||Math.abs(angleDelta(wantedGodYaw,godYaw))>.0002||Math.abs(godPitch-wantedGodPitch)>.0002||Math.abs(godZoom-wantedGodZoom)>.0002||godTarget.distanceTo(wantedGodTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001)requestRender();
+    if((!paused&&(approach||movement.side||movement.forward||navForward||navTurn))||Math.abs(angleDelta(wantedYaw,yaw))>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||Math.abs(angleDelta(wantedGodYaw,godYaw))>.0002||Math.abs(godPitch-wantedGodPitch)>.0002||Math.abs(godZoom-wantedGodZoom)>.0002||godTarget.distanceTo(wantedGodTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001||Math.abs(flowerOpen-flowerTarget)>.001)requestRender();
   }
   function requestRender(){if(!disposed&&!frame)frame=requestAnimationFrame(render);}
   function resize(){const w=container.clientWidth,h=container.clientHeight;if(!w||!h)return;renderer.setSize(w,h);camera.aspect=w/h;
@@ -460,18 +514,20 @@ export function createRoom(container, { onInspect, solved = false, keyTaken = fa
     setMode(value){this.pauseMotion();mode=value==='walk'?'walk':'god';paused=false;requestRender();},
     zoomBy(factor){if(mode==='god')wantedGodZoom=clampZoom(wantedGodZoom*factor);else wantedZoom=clampZoom(wantedZoom*factor);requestRender();},
     frontView(){cancelApproach();if(mode==='walk'){wantedYaw=0;wantedPitch=0;wantedZoom=1;}else{wantedGodYaw=0;wantedGodPitch=.12;}requestRender();},
+    overheadView(){cancelApproach();wantedGodYaw=0;wantedGodPitch=GOD_PITCH;requestRender();},
     focus(id){
-      const poses={scroll:[-2.55,-1.35,-2.55,1.8,-2.9],chest:[.46,-.85,.46,1.12,-1.95],door:[3,-1.55,3,1.45,-2.93],tea:[-.35,1.85,-.35,.85,.55],lantern:[-2.7,-.85,-3.55,.6,-.85],window:[-3.4,.4,-4.3,1.7,.4],'pickup-key':[.46,-.85,.46,1.12,-1.8]};
+      const poses={scroll:[-2.55,-1.35,-2.55,1.8,-2.9],chest:[.46,-.85,.46,1.12,-1.95],door:[3,-1.55,3,1.45,-2.93],tea:[-.35,1.85,-.35,.85,.55],lantern:[-2.7,-.85,-3.55,.6,-.85],window:[-3.4,.4,-4.3,1.7,.4],'pickup-key':[.46,-.85,.46,1.12,-1.8],'high-shelf':[1.8,.65,...GOD_TARGET],'peep-shelf':[PEEP_EYE[0],PEEP_EYE[2],...PEEP_TARGET],lattice:[.46,-.85,.46,2.3,-2.89]};
       cancelApproach();movement={side:0,forward:0};const pose=poses[id];if(!pose)return Promise.resolve(true);
-      if(mode==='god'){wantedGodTarget.set(...pose.slice(2));wantedGodYaw=id==='window'?Math.PI/2:0;wantedGodPitch=['chest','pickup-key'].includes(id)?.3:.12;wantedGodZoom=.42;paused=false;requestRender();return new Promise(resolve=>{approach={resolve};});}
+      if(mode==='god'){wantedGodTarget.set(...pose.slice(2));wantedGodYaw=id==='window'?Math.PI/2:0;wantedGodPitch=['chest','pickup-key','high-shelf'].includes(id)?.3:.12;wantedGodZoom=id==='high-shelf'?GOD_DISTANCE/orbitDistance:.42;paused=false;requestRender();return new Promise(resolve=>{approach={resolve};});}
       const path=findPath(player,{x:pose[0],z:pose[1]});if(!path)return Promise.resolve(false);
       paused=false;wantedZoom=1;requestRender();return new Promise(resolve=>{approach={path,target:new THREE.Vector3(...pose.slice(2)),resolve};});
     },
     resetView(){this.pauseMotion();player.set(START.x,1.58,START.z);wantedYaw=-.22;wantedPitch=-.06;wantedZoom=1;wantedGodTarget.set(0,1.15,-.4);wantedGodYaw=.48;wantedGodPitch=.37;wantedGodZoom=1;requestRender();},
     openDrawer(){drawerTarget=.65;requestRender();},
+    revealFlower(){flowerTarget=1;requestRender();},
     openDoor(){doorTarget=1;requestRender();return new Promise(resolve=>{if(doorOpen>.98)resolve(true);else doorResolve=resolve;});},
     takeKey(){keyItem.visible=false;requestRender();},
-    restart(){doorResolve?.(false);doorResolve=null;drawerTarget=0;doorTarget=0;keyItem.visible=true;this.resetView();},
+    restart(){doorResolve?.(false);doorResolve=null;drawerTarget=0;doorTarget=0;flowerTarget=0;keyItem.visible=true;this.resetView();},
     setMarkers(value){hotContainer.hidden=!value;},
     setQuality(value){renderer.setPixelRatio(Math.min(devicePixelRatio||1,value));resize();},
     getView(){return {mode,yaw:wantedYaw,pitch:wantedPitch,zoom:wantedZoom,position:player.toArray(),orbit:{yaw:wantedGodYaw,pitch:wantedGodPitch,zoom:wantedGodZoom,target:wantedGodTarget.toArray()}};},

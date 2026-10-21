@@ -8,6 +8,8 @@ const obstacles=[
   {minX:-4.4,maxX:-.72,minZ:-3.1,maxZ:-2.1}, // raised alcove
   {minX:-3.9,maxX:-3.2,minZ:-1.2,maxZ:-.5}, // lantern
   {minX:1.9,maxX:3.5,minZ:2.38,maxZ:3.05}, // rear cupboard
+  {minX:2.3,maxX:4.08,minZ:-.22,maxZ:1.65}, // tall painted display shelf
+  {minX:-3.35,maxX:-2.15,minZ:1.53,maxZ:2.96}, // enclosed peep shelf
 ];
 export const angleDelta=(to,from)=>Math.atan2(Math.sin(to-from),Math.cos(to-from));
 export function canStand({x,z}){

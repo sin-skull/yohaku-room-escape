@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createGesture,wrapDigit,clampZoom} from '../interaction.js';
+import {createGesture,wrapDigit,clampZoom} from '../interaction.js?v=1.3.0';
 test('digits wrap at both ends of the mechanical wheel',()=>{assert.equal(wrapDigit(10),0);assert.equal(wrapDigit(-1),9);assert.equal(wrapDigit(315),5);});
 test('zoom stops before passing through the room or losing it',()=>{assert.equal(clampZoom(.01),.28);assert.equal(clampZoom(9),1.45);assert.equal(clampZoom(.7),.7);});
 test('a marker tap inspects the marker once',()=>{const g=createGesture();g.down(1,10,10,'scroll');assert.deepEqual(g.up(1),{hit:'scroll',x:10,y:10});assert.equal(g.up(1),null);});
