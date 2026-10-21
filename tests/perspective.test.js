@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {inkFragments,projectedPoint,alignedObservation,GOD_EYE,GOD_TARGET,PEEP_EYE} from '../perspective.js?v=1.3.0';
-import {flowerCell,restoreObservations,nextHint} from '../puzzles.js?v=1.3.0';
+import {inkFragments,projectedPoint,alignedObservation,GOD_EYE,GOD_TARGET,PEEP_EYE} from '../perspective.js?v=1.4.0';
+import {flowerCell,restoreObservations,nextHint} from '../puzzles.js?v=1.4.0';
 test('fragments at distinct heights/depths join into the intended projected strokes',()=>{
  for(const kind of ['pine','bamboo']){
   const pieces=inkFragments(kind);assert.ok(new Set(pieces.map(p=>p.plane)).size===3);

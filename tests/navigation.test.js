@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {START,BOUNDS,canStand,moveBy,walkStep,findPath,angleDelta} from '../navigation.js?v=1.3.0';
+import {START,BOUNDS,canStand,moveBy,walkStep,findPath,angleDelta} from '../navigation.js?v=1.4.0';
 test('player starts inside the room and cannot stand in walls or furniture',()=>{
- assert.ok(canStand(START));assert.equal(canStand({x:20,z:0}),false);assert.equal(canStand({x:0,z:.5}),false);assert.equal(canStand({x:.46,z:-2}),false);
+ assert.ok(canStand(START));assert.equal(canStand({x:20,z:0}),false);assert.equal(canStand({x:0,z:.5}),false);assert.equal(canStand({x:-2.5,z:-2.5}),false);
 });
 test('continuous movement cannot tunnel through the table or leave the room',()=>{
  const table=moveBy({x:0,z:2},0,-5);assert.ok(canStand(table));assert.ok(table.z>1.34);

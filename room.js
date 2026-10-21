@@ -1,10 +1,13 @@
 import * as THREE from './vendor/three.module.min.js';
-import { textureAtlas } from './assets/textures/atlas-layout.js?v=1.3.0';
-import { createGesture, clampZoom } from './interaction.js?v=1.3.0';
-import { START, canStand, walkStep, moveBy, findPath, angleDelta } from './navigation.js?v=1.3.0';
-import { GOD_TARGET, GOD_DISTANCE, GOD_PITCH, PEEP_EYE, PEEP_TARGET, inkFragments, alignedObservation } from './perspective.js?v=1.3.0';
+import { textureAtlas } from './assets/textures/atlas-layout.js?v=1.4.0';
+import { createGesture, clampZoom } from './interaction.js?v=1.4.0';
+import { createNavigation, angleDelta } from './navigation.js?v=1.4.0';
+import { AREAS, areaId, hasObject, passageAt } from './mansion.js?v=1.4.0';
+import { GOD_TARGET, GOD_DISTANCE, GOD_PITCH, PEEP_EYE, PEEP_TARGET, inkFragments, alignedObservation } from './perspective.js?v=1.4.0';
 
-export function createRoom(container, { onInspect, onObservation = ()=>{}, solved = false, flowerSolved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', viewMode = 'god', view = null }) {
+export function createRoom(container, { onInspect, onTravel = ()=>{}, onObservation = ()=>{}, location = 'parlor', solved = false, flowerSolved = false, keyTaken = false, escaped = false, quality = 1.5, markers = true, surfaceMode = 'images', viewMode = 'god', view = null }) {
+  location=areaId(location);const area=AREAS[location],START=area.start;
+  const {canStand,walkStep,moveBy,findPath}=createNavigation(location);
   const imageSurfaces = surfaceMode === 'images';
   let disposed = false, lastRenderMs = 0;
   const assetLoads = [], assetErrors = [];
@@ -27,6 +30,7 @@ export function createRoom(container, { onInspect, onObservation = ()=>{}, solve
   const viewPointers=new Set();
   let frame = 0, drawerOpen = solved ? .65 : 0, doorOpen = escaped ? 1 : 0, drawerTarget = drawerOpen, doorTarget = doorOpen;
   let flowerOpen=flowerSolved?1:0,flowerTarget=flowerOpen,lastObservation;
+  let crossing=false;
   let seed = 529;
   const random = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
   const pickables = [];
@@ -340,6 +344,75 @@ export function createRoom(container, { onInspect, onObservation = ()=>{}, solve
   const labelMesh=new THREE.Mesh(new THREE.PlaneGeometry(1.5,1.42),new THREE.MeshBasicMaterial({map:latticeLabels,transparent:true,depthWrite:false}));labelMesh.position.set(.46,2.36,-2.80);latticeCover.add(labelMesh);
   labelMesh.raycast=()=>{};
 
+  // Spread the existing chain across a connected wing. Keep only one area active.
+  // Detached source pieces are retained only for resource disposal at area changes.
+  const detached=[];
+  let shells={north:northShell,south:southShell,east:eastShell,west:shoji,ceiling:ceilingShell};
+  function inscription(text,w,h,parent,x,y,z,rotation=0){
+    const map=texture((c,s)=>{c.fillStyle='#e7dfc7';c.fillRect(0,0,s,s);c.fillStyle='#3c4635';c.textAlign='center';c.textBaseline='middle';c.font='62px serif';c.fillText(text,s/2,s/2,s-30);},256);
+    const face=new THREE.Mesh(new THREE.PlaneGeometry(w,h),material('#eee5ce',{map}));face.position.set(x,y,z);face.rotation.y=rotation;parent.add(face);return face;
+  }
+  function passageFace(p,parent){
+    const group=new THREE.Group();parent.add(group);clickable(group,`passage:${p.to}`);
+    const [x,y,z]=p.point,rotation=p.side==='west'?Math.PI/2:p.side==='east'?-Math.PI/2:p.side==='south'?Math.PI:0;
+    group.position.set(x,y,z);group.rotation.y=rotation;
+    box(1.4,2.7,.08,0,-.1,0,darkTimber,group);box(1.25,2.5,.04,0,-.1,.055,plaster,group);
+    for(const px of [-.62,.62])box(.05,2.55,.05,px,-.1,.085,paleTimber,group);
+    box(.06,.09,.035,.4,-.2,.1,blackMetal,group);
+    inscription(p.label.replace('へ',''),.87,.32,group,0,.8,.085);
+    // A low sill makes the travel threshold readable from the walking view.
+    box(1.45,.05,.24,0,-1.43,.12,paleTimber,group);
+    return group;
+  }
+  if(location==='parlor'){
+    for(const object of [chest,highShelf,peepShelf,standingMark,exitGlow]){room.remove(object);detached.push(object);}
+    door.userData.inspect='passage:hall';
+    inscription('表廊下',.9,.3,door,3.04,2.5,-2.93);
+  }else{
+    const keep=location==='study'?[chest,highShelf]:[peepShelf,standingMark];
+    for(const object of [...room.children])if(!keep.includes(object)){room.remove(object);detached.push(object);}
+    shells={};for(const side of ['north','south','east','west','ceiling']){shells[side]=new THREE.Group();room.add(shells[side]);}
+    const half=location==='hall'?1.7:4.53,width=half*2;
+    box(width+.1,.25,6.45,0,-.19,0,darkTimber);
+    if(location==='hall'){
+      for(let n=0;n<12;n++)box(width-.12,.08,.505,0,-.015,-2.8+n*.51,timber);
+      scene.background.set('#b8bca4');sunlight.intensity=2.2;
+      // The closed peep chamber lives at the end of the timber corridor.
+      peepShelf.position.x=2.75;standingMark.position.x+=2.75;
+      const mount=new THREE.Group();mount.position.x=-3.04;shells.north.add(mount);mount.add(door,exitGlow);
+      door.userData.inspect='door';
+      inscription('玄関',.8,.27,mount,3.04,2.95,-2.94);
+    }else{
+      for(let row=0;row<2;row++)for(let col=0;col<3;col++)surfaceBox(2.91,.09,2.98,-2.96+col*2.96,-.03,-1.52+row*3.03,(row+col)%2?tatamiAlt:tatami,2);
+      // A quiet writing desk is the room's landmark; it is not another lock.
+      const desk=new THREE.Group();room.add(desk);clickable(desk,'study-desk');
+      box(2.05,.1,1.1,-2.8,.71,-.4,timber,desk);
+      for(const x of [-3.65,-1.95])for(const z of [-.83,.03])box(.1,.68,.1,x,.34,z,darkTimber,desk);
+      box(.75,.01,.55,-2.95,.77,-.4,plaster,desk);
+      for(let i=0;i<3;i++)box(.055,.006,.28,-3.1+i*.14,.78,-.4,inkMaterial,desk);
+      box(.22,.03,.18,-2.17,.79,-.5,blackMetal,desk);
+      inscription('松',.3,.45,highShelf,3.95,1.7,.05);
+      inscription('松　竹　梅',1.15,.23,chest,0,1.65,-.08);
+    }
+    box(width,3.65,.14,0,1.76,-3.17,plaster,shells.north);
+    box(width,3.65,.14,0,1.76,3.17,plaster,shells.south);
+    box(.14,3.65,6.35,half,1.76,0,plaster,shells.east);
+    box(.14,3.65,6.35,-half,1.76,0,plaster,shells.west);
+    box(width,.12,6.35,0,3.64,0,darkTimber,shells.ceiling);
+    for(const [side,z] of [['north',-3.05],['south',3.05]])for(const y of [.08,2.92,3.5])box(width,.13,.18,0,y,z,timber,shells[side]);
+    for(const [side,x] of [['west',-half+.1],['east',half-.1]]){
+      for(const y of [.08,2.92,3.5])box(.17,.13,6.3,x,y,0,timber,shells[side]);
+      for(const z of [-3.05,3.05])box(.15,3.6,.15,x,1.75,z,darkTimber,shells[side]);
+    }
+    if(location==='study'){
+      // Shared small paper texture gives the study a different, broad window.
+      box(.05,1.95,2.65,-4.43,2,-1.1,washiMaterial,shells.west);
+      for(const z of [-2.42,-1.54,-.66,.22])box(.06,2.02,.045,-4.37,2,z,paleTimber,shells.west);
+      box(.07,.05,2.72,-4.36,2,-1.1,paleTimber,shells.west);
+    }
+    for(const p of area.passages)passageFace(p,shells[p.side]);
+  }
+
   // Batch static pieces sharing a material; moving and clickable groups keep their identity.
   // In particular, all 324 woven border stitches become a single draw call.
   function batchStatic(parent){
@@ -397,11 +470,11 @@ export function createRoom(container, { onInspect, onObservation = ()=>{}, solve
   }
   batchStatic(room);
 
-  const hotspotSpecs=[['scroll','掛け軸を調べる',[-2.55,1.85,-2.86]],['chest','箪笥を調べる',[.46,1.15,-1.82]],['door','襖を調べる',[3.18,1.5,-2.8]],['tea','卓上を調べる',[-.45,.98,.7]],['high-shelf','高い飾り棚を調べる',[3.1,2.42,.6]],['peep-shelf','覗き棚を調べる',[-2.75,1.65,2.05]],['lattice','梅の格子を調べる',[.46,2.3,-2.78]]];
+  const hotspotSpecs=[['scroll','掛け軸を調べる',[-2.55,1.85,-2.86]],['chest','箪笥を調べる',[.46,1.15,-1.82]],['door','玄関の襖を調べる',[0,1.5,-2.8]],['tea','卓上を調べる',[-.45,.98,.7]],['high-shelf','高い飾り棚を調べる',[3.1,2.42,.6]],['peep-shelf','覗き棚を調べる',[0,1.65,2.05]],['lattice','梅の格子を調べる',[.46,2.3,-2.78]],['study-desk','文机を調べる',[-2.8,.9,-.4]],...area.passages.map(p=>[`passage:${p.to}`,p.label,p.point])].filter(([id])=>hasObject(location,id));
   const hotContainer=document.querySelector('#hotspots');
   hotContainer.replaceChildren();
   const hotspots=hotspotSpecs.map(([id,label,pos])=>{
-    const button=document.createElement('button');button.className='hotspot';button.dataset.inspect=id;button.setAttribute('aria-label',label);button.innerHTML=`<span class="hotspot-label">${label.replace('を調べる','')}</span>`;button.addEventListener('click',e=>{if(e.detail===0)onInspect(id);});hotContainer.appendChild(button);
+    const button=document.createElement('button');button.className=id.startsWith('passage:')?'hotspot passage-hotspot':'hotspot';button.dataset.inspect=id;button.setAttribute('aria-label',label);button.innerHTML=`<span class="hotspot-label">${label.replace('を調べる','')}</span>`;button.addEventListener('click',e=>{if(e.detail===0)onInspect(id);});hotContainer.appendChild(button);
     return {button,position:new THREE.Vector3(...pos)};
   });
   hotContainer.hidden=!markers;
@@ -463,21 +536,24 @@ export function createRoom(container, { onInspect, onObservation = ()=>{}, solve
     drawer.position.z=drawerOpen;door.position.x=-doorOpen*1.23;exitGlow.visible=doorOpen>.01;
     if(mode==='walk'){camera.position.copy(player);camera.lookAt(player.x+Math.sin(yaw)*Math.cos(pitch),player.y+Math.sin(pitch),player.z-Math.cos(yaw)*Math.cos(pitch));}
     else{camera.position.set(godTarget.x+Math.sin(godYaw)*orbitDistance*godZoom,godTarget.y+Math.sin(godPitch)*orbitDistance*godZoom,godTarget.z+Math.cos(godYaw)*Math.cos(godPitch)*orbitDistance*godZoom);camera.lookAt(godTarget);}
-    const inside=mode==='walk';northShell.visible=inside||Math.cos(godYaw)>=0;southShell.visible=inside||Math.cos(godYaw)<=0;eastShell.visible=inside||Math.sin(godYaw)<=0;shoji.visible=inside||Math.sin(godYaw)>=0;ceilingShell.visible=inside;
-    for(const object of [scroll,door,alcove])object.visible=northShell.visible;
+    const inside=mode==='walk';shells.north.visible=inside||Math.cos(godYaw)>=0;shells.south.visible=inside||Math.cos(godYaw)<=0;shells.east.visible=inside||Math.sin(godYaw)<=0;shells.west.visible=inside||Math.sin(godYaw)>=0;shells.ceiling.visible=inside;
+    if(location==='parlor')for(const object of [scroll,door,alcove,lattice])object.visible=shells.north.visible;
     const fov=inside?THREE.MathUtils.clamp(baseFov*zoom,30,85):(camera.aspect<1?THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(41/2))/camera.aspect)):39);
     if(Math.abs(camera.fov-fov)>.01){camera.fov=fov;camera.updateProjectionMatrix();}camera.updateMatrixWorld();
-    container.dataset.viewMode=mode;container.dataset.position=`${player.x.toFixed(3)},${player.z.toFixed(3)}`;container.dataset.heading=(inside?yaw:godYaw).toFixed(3);
+    container.dataset.area=location;container.dataset.viewMode=mode;container.dataset.position=`${player.x.toFixed(3)},${player.z.toFixed(3)}`;container.dataset.heading=(inside?yaw:godYaw).toFixed(3);
     const beforeRender=performance.now();renderer.render(scene,camera);lastRenderMs=performance.now()-beforeRender;
-    const direction=camera.getWorldDirection(new THREE.Vector3());let observation=alignedObservation(camera.position.toArray(),direction.toArray());
-    if(!observation&&flowerOpen>.99){const toFlower=new THREE.Vector3(.46,2.3,-2.91).sub(camera.position);if(toFlower.length()<6&&direction.dot(toFlower.normalize())>.98){raycaster.set(camera.position,toFlower);const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));if(hit?.object===flowerFace)observation='plum';}}
+    const direction=camera.getWorldDirection(new THREE.Vector3());
+    const observationPosition=camera.position.toArray();if(location==='hall')observationPosition[0]-=2.75;
+    let observation=alignedObservation(observationPosition,direction.toArray());
+    if((observation==='pine'&&location!=='study')||(observation==='bamboo'&&location!=='hall'))observation=null;
+    if(!observation&&location==='parlor'&&flowerOpen>.99){const toFlower=new THREE.Vector3(.46,2.3,-2.91).sub(camera.position);if(toFlower.length()<8.5&&direction.dot(toFlower.normalize())>.98){raycaster.set(camera.position,toFlower);const hit=raycaster.intersectObject(room,true).find(hit=>visible(hit.object));if(hit?.object===flowerFace)observation='plum';}}
     container.dataset.observation=observation||'';
     if(observation!==lastObservation){lastObservation=observation;onObservation(observation);}
     const w=container.clientWidth,h=container.clientHeight;
     for(const item of hotspots){
       if(item.button.dataset.inspect==='chest')item.position.z=-1.82+drawerOpen;
       const p=item.position.clone().project(camera);let show=p.z>-1&&p.z<1&&p.x>-.94&&p.x<.94&&p.y>-.86&&p.y<.78;
-      if(['scroll','door','lattice'].includes(item.button.dataset.inspect)&&!northShell.visible)show=false;
+      if(['scroll','door','lattice'].includes(item.button.dataset.inspect)&&!shells.north.visible)show=false;
       if(item.button.dataset.inspect==='lattice')item.button.setAttribute('aria-label',flowerOpen>.99?'梅の花紋を調べる':'梅の格子を調べる');
       if(show&&!hotContainer.hidden){
         const direction=item.position.clone().sub(camera.position),length=direction.length();raycaster.set(camera.position,direction.normalize());
@@ -489,6 +565,10 @@ export function createRoom(container, { onInspect, onObservation = ()=>{}, solve
     }
     if(approach&&(approach.path?!approach.path.length&&Math.abs(angleDelta(wantedYaw,yaw))<.015&&Math.abs(pitch-wantedPitch)<.015:godTarget.distanceTo(wantedGodTarget)<.01&&Math.abs(godZoom-wantedGodZoom)<.005&&Math.abs(angleDelta(wantedGodYaw,godYaw))<.015)){const resolve=approach.resolve;approach=null;resolve(true);}
     if(doorResolve&&doorOpen>.98){const resolve=doorResolve;doorResolve=null;resolve(true);}
+    // Crossing an actual doorway while walking changes area; never fire on restore.
+    if(inside&&!paused&&!crossing&&(movement.side||movement.forward||navForward||approach?.path)){
+      const next=passageAt(location,player);if(next){crossing=true;onTravel(next);}
+    }
     updateIndicator();
     if((!paused&&(approach||movement.side||movement.forward||navForward||navTurn))||Math.abs(angleDelta(wantedYaw,yaw))>.0002||Math.abs(pitch-wantedPitch)>.0002||Math.abs(zoom-wantedZoom)>.0002||Math.abs(angleDelta(wantedGodYaw,godYaw))>.0002||Math.abs(godPitch-wantedGodPitch)>.0002||Math.abs(godZoom-wantedGodZoom)>.0002||godTarget.distanceTo(wantedGodTarget)>.001||Math.abs(drawerOpen-drawerTarget)>.001||Math.abs(doorOpen-doorTarget)>.001||Math.abs(flowerOpen-flowerTarget)>.001)requestRender();
   }
@@ -516,7 +596,8 @@ export function createRoom(container, { onInspect, onObservation = ()=>{}, solve
     frontView(){cancelApproach();if(mode==='walk'){wantedYaw=0;wantedPitch=0;wantedZoom=1;}else{wantedGodYaw=0;wantedGodPitch=.12;}requestRender();},
     overheadView(){cancelApproach();wantedGodYaw=0;wantedGodPitch=GOD_PITCH;requestRender();},
     focus(id){
-      const poses={scroll:[-2.55,-1.35,-2.55,1.8,-2.9],chest:[.46,-.85,.46,1.12,-1.95],door:[3,-1.55,3,1.45,-2.93],tea:[-.35,1.85,-.35,.85,.55],lantern:[-2.7,-.85,-3.55,.6,-.85],window:[-3.4,.4,-4.3,1.7,.4],'pickup-key':[.46,-.85,.46,1.12,-1.8],'high-shelf':[1.8,.65,...GOD_TARGET],'peep-shelf':[PEEP_EYE[0],PEEP_EYE[2],...PEEP_TARGET],lattice:[.46,-.85,.46,2.3,-2.89]};
+      if(!hasObject(location,id))return Promise.resolve(false);
+      const poses={scroll:[-2.55,-1.35,-2.55,1.8,-2.9],chest:[.46,-.85,.46,1.12,-1.95],door:[0,-1.7,0,1.45,-2.93],tea:[-.35,1.85,-.35,.85,.55],lantern:[-2.7,-.85,-3.55,.6,-.85],window:[-3.4,.4,-4.3,1.7,.4],'pickup-key':[.46,-.85,.46,1.12,-1.8],'high-shelf':[1.8,.65,...GOD_TARGET],'peep-shelf':[0,PEEP_EYE[2],0,PEEP_TARGET[1],PEEP_TARGET[2]],lattice:[.46,-.85,.46,2.3,-2.89],'study-desk':[-2.8,1,-2.8,.85,-.4],...Object.fromEntries(area.passages.map(p=>[`passage:${p.to}`,[...p.stand,...p.point]]))};
       cancelApproach();movement={side:0,forward:0};const pose=poses[id];if(!pose)return Promise.resolve(true);
       if(mode==='god'){wantedGodTarget.set(...pose.slice(2));wantedGodYaw=id==='window'?Math.PI/2:0;wantedGodPitch=['chest','pickup-key','high-shelf'].includes(id)?.3:.12;wantedGodZoom=id==='high-shelf'?GOD_DISTANCE/orbitDistance:.42;paused=false;requestRender();return new Promise(resolve=>{approach={resolve};});}
       const path=findPath(player,{x:pose[0],z:pose[1]});if(!path)return Promise.resolve(false);
@@ -555,7 +636,7 @@ export function createRoom(container, { onInspect, onObservation = ()=>{}, solve
     dispose(){
       disposed=true;cancelApproach();doorResolve?.(false);controls.abort();cancelAnimationFrame(frame);observer.disconnect();
       const geometries=new Set(),materials=new Set(),maps=new Set(textureCache.values());
-      scene.traverse(obj=>{if(obj.geometry)geometries.add(obj.geometry);for(const mat of [obj.material].flat()){if(mat){materials.add(mat);if(mat.map)maps.add(mat.map);}}});
+      for(const root of [scene,...detached])root.traverse(obj=>{if(obj.geometry)geometries.add(obj.geometry);for(const mat of [obj.material].flat()){if(mat){materials.add(mat);if(mat.map)maps.add(mat.map);}}});
       geometries.forEach(geometry=>geometry.dispose());materials.forEach(mat=>mat.dispose());maps.forEach(map=>map.dispose());
       renderer.dispose();renderer.forceContextLoss();renderer.domElement.remove();hotspots.forEach(item=>item.button.remove());
     }

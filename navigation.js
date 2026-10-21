@@ -1,22 +1,17 @@
-// Metres in the room's floor plane. Collision is deliberately kinematic, not physics.
-export const START = Object.freeze({x:1.4,z:2.25});
-export const BOUNDS = Object.freeze({minX:-4.03,maxX:4.12,minZ:-2.72,maxZ:2.8});
+// Metres in the area's floor plane. Collision is kinematic, not physics.
+import {AREAS,areaId} from './mansion.js?v=1.4.0';
+export const START = Object.freeze(AREAS.parlor.start);
+export const BOUNDS = Object.freeze(AREAS.parlor.bounds);
 const RADIUS=.19;
-const obstacles=[
-  {minX:-1.57,maxX:.88,minZ:-.25,maxZ:1.34}, // low table, including its legs
-  {minX:-.54,maxX:1.46,minZ:-2.94,maxZ:-1.23}, // chest and fully extended drawer
-  {minX:-4.4,maxX:-.72,minZ:-3.1,maxZ:-2.1}, // raised alcove
-  {minX:-3.9,maxX:-3.2,minZ:-1.2,maxZ:-.5}, // lantern
-  {minX:1.9,maxX:3.5,minZ:2.38,maxZ:3.05}, // rear cupboard
-  {minX:2.3,maxX:4.08,minZ:-.22,maxZ:1.65}, // tall painted display shelf
-  {minX:-3.35,maxX:-2.15,minZ:1.53,maxZ:2.96}, // enclosed peep shelf
-];
 export const angleDelta=(to,from)=>Math.atan2(Math.sin(to-from),Math.cos(to-from));
-export function canStand({x,z}){
+export function createNavigation(location='parlor'){
+const config=AREAS[areaId(location)],BOUNDS=config.bounds;
+const obstacles=config.obstacles.map(([minX,maxX,minZ,maxZ])=>({minX,maxX,minZ,maxZ}));
+function canStand({x,z}){
   if(!Number.isFinite(x)||!Number.isFinite(z)||x<BOUNDS.minX||x>BOUNDS.maxX||z<BOUNDS.minZ||z>BOUNDS.maxZ)return false;
   return !obstacles.some(b=>Math.hypot(x-Math.max(b.minX,Math.min(b.maxX,x)),z-Math.max(b.minZ,Math.min(b.maxZ,z)))<RADIUS);
 }
-export function moveBy(position,dx,dz){
+function moveBy(position,dx,dz){
   const steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.06));
   let next={...position};
   for(let i=0;i<steps;i++){
@@ -27,7 +22,7 @@ export function moveBy(position,dx,dz){
   }
   return next;
 }
-export function walkStep(position,side,forward,yaw,seconds){
+function walkStep(position,side,forward,yaw,seconds){
   const length=Math.max(1,Math.hypot(side,forward)),distance=1.35*Math.min(.05,Math.max(0,seconds))/length;
   return moveBy(position,(Math.cos(yaw)*side+Math.sin(yaw)*forward)*distance,(Math.sin(yaw)*side-Math.cos(yaw)*forward)*distance);
 }
@@ -37,7 +32,7 @@ function clearLine(a,b){
   return true;
 }
 // Small bounded grid, computed only when an object is tapped. No per-frame search.
-export function findPath(start,goal){
+function findPath(start,goal){
   if(!canStand(start)||!canStand(goal))return null;
   if(clearLine(start,goal))return [{...goal}];
   const step=.24,cols=Math.floor((BOUNDS.maxX-BOUNDS.minX)/step),rows=Math.floor((BOUNDS.maxZ-BOUNDS.minZ)/step);
@@ -60,3 +55,6 @@ export function findPath(start,goal){
   for(let i=0;i<raw.length;){let far=raw.length-1;while(far>i&&!clearLine(anchor,raw[far]))far--;path.push(raw[far]);anchor=raw[far];i=far+1;}
   return path;
 }
+return {canStand,moveBy,walkStep,findPath};
+}
+export const {canStand,moveBy,walkStep,findPath}=createNavigation();

@@ -1,21 +1,22 @@
-import { createRoom } from './room.js?v=1.3.0';
-import { wrapDigit } from './interaction.js?v=1.3.0';
-import { VERSION } from './version.js?v=1.3.0';
-import { toggleItemSelection, itemAction } from './inventory.js?v=1.3.0';
-import { CLUE_SYMBOLS, CLUE_INK, flowerCell, restoreObservations, nextHint } from './puzzles.js?v=1.3.0';
+import { createRoom } from './room.js?v=1.4.0';
+import { wrapDigit } from './interaction.js?v=1.4.0';
+import { VERSION } from './version.js?v=1.4.0';
+import { toggleItemSelection, itemAction } from './inventory.js?v=1.4.0';
+import { CLUE_SYMBOLS, CLUE_INK, flowerCell, restoreObservations, nextHint } from './puzzles.js?v=1.4.0';
+import { AREAS, areaId, restoreJourney } from './mansion.js?v=1.4.0';
 const $=s=>document.querySelector(s);
 $('#game-version').textContent=`v${VERSION}`;
 const icon=(id,cls='')=>`<svg class="${cls}" aria-hidden="true"><use href="#i-${id}"/></svg>`;
-const freshState=()=>({schema:3,clue:false,observations:{pine:false,bamboo:false,plum:false},flowerSolved:false,solved:false,key:false,escaped:false,started:Date.now(),finished:null,hints:0,digits:[0,0,0]});
+const freshState=()=>({schema:4,area:'parlor',visited:['parlor'],views:{},clue:false,observations:{pine:false,bamboo:false,plum:false},flowerSolved:false,solved:false,key:false,escaped:false,started:Date.now(),finished:null,hints:0,digits:[0,0,0]});
 let state=freshState(),settings={markers:true,quality:1.5,volume:.35,surfaceMode:'images',viewMode:'god'},room,selectedItem=null;
 const pressedKeys=new Set();let inventoryOpen=false,inspectionTicket=0;
 let observedCandidate=null,restoredProgress=null;
 try{const progress=JSON.parse(localStorage.getItem('yohaku-progress'));if(progress&&typeof progress.clue==='boolean'){restoredProgress=progress;state={...state,...progress};}const prefs=JSON.parse(localStorage.getItem('yohaku-settings'));if(prefs)settings={...settings,...prefs};}catch{}
 state.digits=Array.from({length:3},(_,i)=>wrapDigit(Number(state.digits?.[i])||0));
-state.observations=restoreObservations(restoredProgress||state);state.flowerSolved=!!(state.flowerSolved||state.solved);state.schema=3;
+state.observations=restoreObservations(restoredProgress||state);state.flowerSolved=!!(state.flowerSolved||state.solved);Object.assign(state,restoreJourney(restoredProgress));state.schema=4;
 settings.surfaceMode=settings.surfaceMode==='geometry'?'geometry':'images';
 settings.viewMode=settings.viewMode==='walk'?'walk':'god';
-const modal=$('#modal');let comparing=false,ending=false;
+const modal=$('#modal');let comparing=false,ending=false,travelling=false;
 $('.modal-close').onclick=()=>{if(!comparing)modal.close();};
 modal.addEventListener('cancel',e=>{if(comparing)e.preventDefault();});
 modal.addEventListener('close',refreshObservation);
@@ -34,11 +35,25 @@ function update(){
  $('#inventory-toggle').setAttribute('aria-label',`${inventoryOpen?'持ちものを閉じる':'持ちものを開く'}${selectedItem?selectedItem==='key'?'・鍵を選択中':'・覚え書きを選択中':''}`);
  updateModeButton();
  refreshObservation();
- $('.live-badge').textContent=state.escaped?'脱出':'静寂の間';
+ $('.live-badge').textContent=state.escaped?'脱出':AREAS[state.area].name;
 }
-try{room=createRoom($('#scene'),{onInspect:inspect,onObservation:observationChanged,flowerSolved:state.flowerSolved,solved:state.solved,keyTaken:state.key,escaped:state.escaped,...settings});}
+function buildRoom(view=state.views[state.area]){return createRoom($('#scene'),{onInspect:inspect,onTravel:travel,onObservation:observationChanged,location:state.area,flowerSolved:state.flowerSolved,solved:state.solved,keyTaken:state.key,escaped:state.escaped,...settings,view});}
+try{room=buildRoom();}
 catch(error){console.error(error);$('#loading').innerHTML='<span class="loading-mark">余白</span><p>描画を準備できませんでした。</p><button class="primary-button" id="retry">再読み込み</button>';$('#retry').onclick=()=>location.reload();}
 function paper(message){toast(message);}
+async function travel(destination){
+ const next=areaId(destination);if(travelling||ending||comparing||next===state.area||!AREAS[state.area].passages.some(p=>p.to===next))return;
+ travelling=true;inspectionTicket++;stopMovement();modal.close();
+ const old=state.area;state.views[old]=room.getView();
+ $('#area-transition').textContent=AREAS[next].name;$('#area-transition').hidden=false;
+ try{
+  await new Promise(resolve=>requestAnimationFrame(resolve));
+  room.dispose();room=null;observedCandidate=null;state.area=next;
+  if(!state.visited.includes(next))state.visited.push(next);
+  room=buildRoom(null);await room.ready;save();update();
+ }catch(error){console.error(error);$('#scene-message').textContent='移動を完了できませんでした。再読み込みしてください。';save();}
+ finally{$('#area-transition').hidden=true;travelling=false;}
+}
 function cluePicture(id){const paths={pine:'<path d="M6 9h28v18H6zM2 25l18 14 18-14M20 0v6"/>',bamboo:'<path d="M5 4h30v32H5zM8 20s5-8 12-8 12 8 12 8-5 8-12 8S8 20 8 20Z"/><circle cx="20" cy="20" r="3"/>',plum:Array.from({length:9},(_,i)=>`<rect x="${3+i%3*12}" y="${3+Math.floor(i/3)*12}" width="9" height="9"/>`).join('')};return `<svg viewBox="0 0 40 42" aria-hidden="true">${paths[id]}</svg>`;}
 function observationChanged(id){observedCandidate=id;refreshObservation();}
 function refreshObservation(){const active=observedCandidate&&!state.observations[observedCandidate]&&!modal?.open;$('#observation-bar').hidden=!active;if(active){$('#observation-symbol').textContent=CLUE_SYMBOLS[observedCandidate];$('#record-observation').setAttribute('aria-label',`${CLUE_SYMBOLS[observedCandidate]}の見え方を写す`);}}
@@ -76,17 +91,19 @@ function showLock(){
  $('#unlock').onclick=()=>{if(state.digits.join('')==='315'){state.solved=true;save();update();modal.close();room?.openDrawer();chime(660);paper('かちり。');}else{$('#code-message').textContent='動かない。';chime(180);$('.wood-lock').animate([{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(0)'}],{duration:150});}};
 }
 async function inspect(id,{approach=true,useSelected=true}={}){
- if(ending||comparing)return;
+ if(ending||comparing||travelling)return;
  const cell=/^lattice-(\d)$/.exec(id);if(cell)id='lattice';
  const ticket=++inspectionTicket;
  if(approach&&room&&!(await room.focus(id)))return;
  if(ticket!==inspectionTicket)return;
+ if(id.startsWith('passage:')){await travel(id.slice(8));return;}
  const action=useSelected?itemAction(selectedItem,id,state):'inspect';
  if(action==='no-effect'){paper('何も反応しないようだ。');return;}
  if(action==='unlock-door'){await unlockDoor();return;}
  if(cell){chooseFlower(Number(cell[1]));return;}
  if(id==='high-shelf'||id==='peep-shelf')return;
  if(id==='lattice'){if(!state.flowerSolved)showLattice();return;}
+ if(id==='study-desk'){showScroll();return;}
  if(id==='scroll'){showScroll();return;}
  if(id==='chest'||id==='pickup-key'){if(!state.solved)showLock();else if(!state.key)showKey();else paper('何も入っていない。');return;}
  if(id==='key'){show('','真鍮の鍵',`${icon('key','key-art')}<button class="primary-button" id="back-room">しまう</button>`);$('#back-room').onclick=()=>modal.close();return;}
@@ -99,12 +116,12 @@ async function inspect(id,{approach=true,useSelected=true}={}){
 async function unlockDoor(){stopMovement();ending=true;chime(880);const opened=await room?.openDoor();ending=false;if(opened){state.escaped=true;state.finished=Date.now();selectedItem=null;save();update();showEnding();}}
 function showKey(){show('','引き出しの奥',`${icon('key','key-art')}<button class="primary-button" id="take-key">手に取る</button>`);$('#take-key').onclick=()=>{state.key=true;room?.takeKey();save();update();modal.close();chime(780);paper('鍵を手に入れた。');};}
 function showEnding(){show('','余白の、その先へ',`<div class="ending-art">風　光</div><p class="center">脱出</p><button class="primary-button" id="enjoy-room">余韻を楽しむ</button><button class="secondary-button" id="play-again">もう一度</button>`);$('#enjoy-room').onclick=()=>modal.close();$('#play-again').onclick=restart;}
-function restart(){inspectionTicket++;selectedItem=null;state=freshState();ending=false;room?.restart();save();update();modal.close();paper('新たな、余白。');}
+function restart(){inspectionTicket++;stopMovement();selectedItem=null;state=freshState();ending=false;observedCandidate=null;room?.dispose();modal.close();room=buildRoom();save();update();paper('新たな、余白。');}
 
 async function switchSurface(mode,{view=room?.getView(),persist=true}={}){
   if(!['images','geometry'].includes(mode))return room;
   room?.dispose();settings.surfaceMode=mode;
-  room=createRoom($('#scene'),{onInspect:inspect,onObservation:observationChanged,flowerSolved:state.flowerSolved,solved:state.solved,keyTaken:state.key,escaped:state.escaped,...settings,view});
+  room=buildRoom(view);
   await room.ready;
   if(room.getInfo().assetErrors.length)throw new Error('A surface texture could not be loaded');
   if(persist)save();return room;
@@ -112,7 +129,7 @@ async function switchSurface(mode,{view=room?.getView(),persist=true}={}){
 
 function showComparison(){
   const results={};results[settings.surfaceMode]=room?.getInfo();
-  show('ONE ROOM, TWO WAYS','静寂の間で、比べる',`<p>この部屋だけに、画像を使う表現を試験導入しています。<br>切り替えても、視点・持ちもの・謎解きの進行は引き継ぎます。</p><div class="surface-choices"><button class="surface-choice" data-mode="images"><strong>画像中心</strong><small>輪郭は立体、細部は画像</small></button><button class="surface-choice" data-mode="geometry"><strong>従来の立体細部</strong><small>桟・縁・金具も立体</small></button></div><p class="texture-note" id="texture-note">7素材を1枚のWebPに共有 · 素材は最大500px</p><div id="comparison-results"></div><p class="comparison-status" id="comparison-status" role="status">同じ画面サイズ・描画倍率・見回し動作で計測できます。</p><button class="primary-button" id="run-comparison">同じ条件で描画負荷を計測</button><button class="secondary-button" id="back-from-comparison">この表現で、部屋に戻る</button><p class="measurement-note">CPU描画送信は48フレームの中央値です。GPU時間や実機FPSとは異なります。テクスチャ展開量はミップマップ込みの概算です。</p>`);
+  show('','この場所で、比べる',`<p>切り替えても、現在の場所・視点・持ちもの・謎解きの進行を引き継ぎます。</p><div class="surface-choices"><button class="surface-choice" data-mode="images"><strong>画像中心</strong><small>輪郭は立体、細部は画像</small></button><button class="surface-choice" data-mode="geometry"><strong>従来の立体細部</strong><small>桟・縁・金具も立体</small></button></div><p class="texture-note" id="texture-note">7素材を1枚のWebPに共有 · 素材は最大500px</p><div id="comparison-results"></div><p class="comparison-status" id="comparison-status" role="status">同じ画面サイズ・描画倍率・見回し動作で計測できます。</p><button class="primary-button" id="run-comparison">同じ条件で描画負荷を計測</button><button class="secondary-button" id="back-from-comparison">この表現で、部屋に戻る</button><p class="measurement-note">CPU描画送信は48フレームの中央値です。GPU時間や実機FPSとは異なります。テクスチャ展開量はミップマップ込みの概算です。</p>`);
   modal.classList.add('comparison-modal');
   const updateResults=()=>{
     document.querySelectorAll('[data-mode]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===settings.surfaceMode)));
@@ -150,6 +167,9 @@ function showComparison(){
 
 
 $('#help-button').onclick=()=>{show('','手ほどき',`<div class="gesture-guide"><p>足跡　⇄　歩行・神目線</p><p>歩行中：上へなぞると前進<br>下へ後退、左右へ向きを変える<br>押さえている間動き、離すと止まる</p><p>ひと触れ　◯　物に近づく</p><p>〈 〉　持ちものを開く</p><p>一度触れて選ぶ、再び触れて解除<br>選んだまま対象に触れて使う</p></div><p class="fine-print">神目線：ドラッグで回転／二本指で拡大<br>鍵盤：WASDで歩行、← →で回転</p>`);};
+$('#map-button').onclick=()=>{
+ show('','館の間取り',`<div class="wing-map" role="img" aria-label="静寂の間と書院が表廊下につながり、表廊下の先に玄関がある"><div class="map-exit">玄関</div><div class="map-rooms">${['parlor','hall','study'].map(id=>`<div class="map-room ${state.area===id?'here':''}"><b>${AREAS[id].name}</b><span>${state.area===id?'此処':state.visited.includes(id)?'足跡':'未訪'}</span>${id==='parlor'?'<small>掛け軸・格子</small>':id==='hall'?'<small>覗き棚・玄関</small>':'<small>飾り棚・箪笥</small>'}</div>`).join('')}</div></div>`);
+};
 $('#hint-button').onclick=()=>{
  state.hints++;save();
  const hints=nextHint(state);
@@ -191,7 +211,8 @@ async function toggleSound(){
 }
 function chime(frequency){if(!soundOn||!audio)return;const o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.frequency.value=frequency;g.gain.setValueAtTime(.06,audio.currentTime);g.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+.8);o.connect(g);g.connect(master);o.start();o.stop(audio.currentTime+.8);}
 $('#sound-button').onclick=toggleSound;
-document.addEventListener('visibilitychange',()=>{if(!audio||!soundOn)return;if(document.hidden)audio.suspend();else audio.resume();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&room&&!travelling){state.views[state.area]=room.getView();save();}if(!audio||!soundOn)return;if(document.hidden)audio.suspend();else audio.resume();});
+window.addEventListener('pagehide',()=>{if(room&&!travelling){state.views[state.area]=room.getView();save();}});
 // Remove an older Flutter worker if this directory was previously used by Flutter.
 if('serviceWorker' in navigator)navigator.serviceWorker.getRegistrations().then(regs=>{const scope=new URL('./',location.href).href;for(const reg of regs){const url=reg.active?.scriptURL||'';if(reg.scope===scope&&url.includes('flutter_service_worker.js'))reg.unregister();}}).catch(()=>{});
 update();
